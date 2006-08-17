@@ -10,17 +10,27 @@ use version; our $VERSION = qv('0.0.1');
 
 my %signal_map  = ( );
 my %signal_busy = ( );
+my %is_signal   = ( );
 
 my @exported_subs = qw(
     connect
     disconnect
     signals
+    signal_names
 );
 
 sub _validate_signal_name {
     my $sig_name = shift;
-    croak "Invalid signal name: $sig_name"
+    croak "Invalid signal name '$sig_name'"
         unless $sig_name =~ /^\w(?:[\w\d])*$/;
+}
+
+sub _check_signal_exists {
+    my $class    = shift;
+    my $sig_name = shift;
+    _validate_signal_name($sig_name);
+    croak "Signal '$sig_name' undefined"
+        unless exists $is_signal{$class}->{$sig_name};
 }
 
 sub _emit_signal {
@@ -29,7 +39,7 @@ sub _emit_signal {
     my $src_id   = refaddr($self);
 
     unless (blessed($self)) {
-        croak "Signal $sig_name must be called on an object\n";
+        croak "Signal $sig_name must be invoked on an object\n";
     }
 
     if (exists($signal_busy{$src_id}->{$sig_name})) {
@@ -53,6 +63,10 @@ sub _emit_signal {
                 if (defined($dst_obj)) {
 
                     my @args = @_;
+
+                    # The reveal_source option causes a hashref
+                    # describing the source of the signal to
+                    # be prepended to the args.
                     if ($options->{reveal_source}) {
                         unshift @args, {
                             source  => $self,
@@ -61,6 +75,7 @@ sub _emit_signal {
                         };
                     }
 
+                    # Call an anon sub or a method
                     if (blessed($dst_obj)) {
                         $dst_obj->$dst_method(@args);
                     }
@@ -94,24 +109,21 @@ sub connect {
     my $dst_obj     = shift;
     my $dst_method;
 
-    _validate_signal_name($sig_name);
     _connect_usage() unless blessed($src_obj) &&
                             defined($dst_obj);
+    _check_signal_exists(ref($src_obj), $sig_name);
 
     if (blessed($dst_obj)) {
         $dst_method = shift || _connect_usage();
+        croak "Slot '$dst_method' not handled by " . ref($dst_obj)
+            unless $dst_obj->can($dst_method);
     }
     else {
-        $dst_method = 'anon';
         _connect_usage() unless ref($dst_obj) eq 'CODE';
     }
 
     my $options     = shift || { };
-
-    #croak 'Usage: connect( src_obj, sig_name, dst_obj, dst_method_name, [ options ] )'
-    #    unless blessed($src_obj) && defined($dst_method);
-
-    my $src_id = refaddr($src_obj);
+    my $src_id      = refaddr($src_obj);
 
     # Now badness: we replace the DESTROY that Class::Std dropped into
     # the caller's namespace with our own.
@@ -123,7 +135,7 @@ sub connect {
 
         my $caller          = ref($src_obj);
         my $destroy_func    = $caller . '::DESTROY';
-        my $current_func    = *{$destroy_func}{CODE};
+        my $current_func    = *{ $destroy_func }{ CODE };
 
         local $^W = 0;  # Disable subroutine redefined warning
         no warnings;    # Need this too.
@@ -149,12 +161,15 @@ sub disconnect {
     my $src_obj = shift;
     my $src_id  = refaddr($src_obj);
 
+    croak 'disconnect must be called as a member'
+        unless blessed $src_obj;
+
     if (@_) {
         my $sig_name = shift;
-        _validate_signal_name($sig_name);
+        _check_signal_exists(ref($src_obj), $sig_name);
         if (@_) {
             my $dst_obj     = shift;
-            my $dst_method  = shift;
+            my $dst_method  = shift;    # optional - undef is ok in the grep below
             my $dst_id      = refaddr($dst_obj);
 
             my $slots = $signal_map{$src_id}->{$sig_name};
@@ -188,10 +203,12 @@ sub signals {
         # Name OK?
         _validate_signal_name($sig_name);
 
-        my $sig_func = $caller . '::' . $sig_name;
+        croak "Signal '$sig_name' already declared"
+            if exists $is_signal{$caller}->{$sig_name};
 
-        croak "Signal $sig_name is already defined"
-            if defined *{ $sig_func };
+        $is_signal{$caller}->{$sig_name}++;
+
+        my $sig_func = $caller . '::' . $sig_name;
 
         # Create the subroutine stub
         no strict 'refs';
@@ -206,13 +223,19 @@ sub signals {
     return;
 }
 
+sub signal_names {
+    my $self  = shift;
+    my $class = ref($self) || $self;
+    return keys %{$is_signal{$class}};;
+}
+
 sub import {
     my $caller = caller;
 
     # Install our exported subs
     no strict 'refs';
     for my $sub ( @exported_subs ) {
-        *{ $caller . '::' . $sub } = \&{$sub};
+        *{ $caller . '::' . $sub } = \&{ $sub };
     }
 }
 
@@ -223,6 +246,7 @@ sub DESTROY {
     my $src_id = refaddr($self);
     _destroy($src_id);
 
+    # and for them.
     $self->SUPER::DESTROY();
 }
 

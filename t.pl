@@ -49,25 +49,36 @@ use Class::Std::Slots;
     sub another_slot {
         my $self = shift;
         warn $self . '->another_slot(', join(', ', @_), ")\n";
-        $self->another_signal(@_);
+        $self->another_signal(@_);  # Trigger another signal
     }
 }
 
 package main;
 
-my $ob2 = T::Class::Two->new();
 my $ob1 = T::Class::One->new();
+my $ob2 = T::Class::Two->new();
 
-$ob1->connect('my_signal', $ob2, 'another_slot', { reveal_source => 1 });
+print "Signals handled by ob1: ", join(', ', T::Class::One->signal_names), "\n";
+print "Signals handled by ob2: ", join(', ', $ob2->signal_names), "\n";
+
+$ob1->connect('my_signal',      $ob2, 'another_slot', { reveal_source => 1 });
 $ob2->connect('another_signal', $ob1, 'my_slot');
 $ob2->connect('another_signal', $ob1, 'my_second_slot');
 
 # Install an anon slot
-$ob2->connect('another_signal', sub { print "Boo!\n"; });
+$ob2->connect('another_signal', sub {
+    my $src = shift;
+    print "Got $src->{signal}\n";
+    for (keys %{$src}) {
+        print "    $_ => $src->{$_}\n";
+    }
+}, { reveal_source => 1 });
 
 $ob1->my_signal('Wow!');
 
 $ob2->disconnect('another_signal', $ob1, 'my_slot');
 #$ob2->disconnect('another_signal', $ob1);
+
+#$ob1->connect('my_signal', $ob2, 'frobnicate');
 
 $ob1->my_signal('Whoop!');
