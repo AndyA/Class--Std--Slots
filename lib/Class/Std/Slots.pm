@@ -4,6 +4,7 @@ use warnings;
 use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
+use Data::Dumper;
 
 use version; our $VERSION = qv('0.0.1');
 
@@ -12,6 +13,7 @@ my %signal_busy = ( );
 
 my @exported_subs = qw(
     connect
+    disconnect
     signals
 );
 
@@ -33,35 +35,43 @@ sub _emit_signal {
     # Flag this signal as busy
     $signal_busy{$src_id}->{$sig_name}++;
 
-    # Get the slots registered with this signal
-    my $slots = $signal_map{$src_id}->{$sig_name};
+    # We still want to remove the busy lock on the signal
+    # even if one of the slots dies - so wrap the whole
+    # thing in an eval.
+    eval {
+        # Get the slots registered with this signal
+        my $slots = $signal_map{$src_id}->{$sig_name};
 
-    # Might have none... It's not an error.
-    if (defined $slots) {
-        for my $slot (@{$slots}) {
-            my ($dst_obj, $dst_method, $options) = @{$slot};
-            if (defined($dst_obj)) {
+        # Might have none... It's not an error.
+        if (defined $slots) {
+            for my $slot (@{$slots}) {
+                my ($dst_obj, $dst_method, $options) = @{$slot};
+                if (defined($dst_obj)) {
 
-                my @args = @_;
-                if ($options->{reveal_source}) {
-                    unshift @args, {
-                        source  => $self,
-                        signal  => $sig_name,
-                        options => $options
-                    };
-                }
+                    my @args = @_;
+                    if ($options->{reveal_source}) {
+                        unshift @args, {
+                            source  => $self,
+                            signal  => $sig_name,
+                            options => $options
+                        };
+                    }
 
-                if (blessed($dst_obj)) {
-                    $dst_obj->$dst_method(@args);
-                }
-                else {
-                    $dst_obj->(@args);
+                    if (blessed($dst_obj)) {
+                        $dst_obj->$dst_method(@args);
+                    }
+                    else {
+                        $dst_obj->(@args);
+                    }
                 }
             }
         }
-    }
+    };
 
+    # Remove busy flag
     delete $signal_busy{$src_id}->{$sig_name};
+
+    die if $@;
 }
 
 sub _connect_usage {
@@ -70,6 +80,8 @@ sub _connect_usage {
 
 sub _destroy {
     my $src_id = shift;
+    delete $signal_map{$src_id};
+    delete $signal_busy{$src_id};
 }
 
 sub connect {
@@ -78,6 +90,7 @@ sub connect {
     my $dst_obj     = shift;
     my $dst_method;
 
+    _validate_signal_name($sig_name);
     _connect_usage() unless blessed($src_obj) &&
                             defined($dst_obj);
 
@@ -85,6 +98,7 @@ sub connect {
         $dst_method = shift || _connect_usage();
     }
     else {
+        $dst_method = 'anon';
         _connect_usage() unless ref($dst_obj) eq 'CODE';
     }
 
@@ -111,9 +125,8 @@ sub connect {
         no warnings;    # Need this too.
 
         *{ $destroy_func } = sub {
+            # Destroy our members
             _destroy($src_id);
-            delete $signal_map{$src_id};
-            delete $signal_busy{$src_id};
             # Chain the existing destructor
             $current_func->(@_);
         };
@@ -126,6 +139,42 @@ sub connect {
     ];
 
     return;
+}
+
+sub disconnect {
+    my $src_obj = shift;
+    my $src_id  = refaddr($src_obj);
+
+    if (@_) {
+        my $sig_name = shift;
+        _validate_signal_name($sig_name);
+        if (@_) {
+            my $dst_obj     = shift;
+            my $dst_method  = shift;
+            my $dst_id      = refaddr($dst_obj);
+
+            my $slots = $signal_map{$src_id}->{$sig_name};
+            if (defined $slots) {
+                # Nasty block to filter out matching slots.
+                @{$slots} = grep {
+                    defined $_
+                      && defined $_->[0]
+                      && ($dst_id != refaddr($_->[0])
+                          || (! (defined($dst_method)
+                                   && defined($_->[1])
+                                   && ($dst_method eq $_->[1]))) )
+                } @{$slots};
+            }
+        }
+        else {
+            # Delete all slots for given signal
+            delete $signal_map{$src_id}->{$sig_name};
+        }
+    }
+    else {
+        # Delete /all/ slots
+        delete $signal_map{$src_id};
+    }
 }
 
 sub signals {
@@ -168,9 +217,7 @@ sub DESTROY {
 
     # Tidy up for us
     my $src_id = refaddr($self);
-
-    delete $signal_map{$src_id};
-    delete $signal_busy{$src_id};
+    _destroy($src_id);
 
     $self->SUPER::DESTROY();
 }

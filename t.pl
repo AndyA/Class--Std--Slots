@@ -49,7 +49,7 @@ use Class::Std::Slots;
     sub another_slot {
         my $self = shift;
         warn $self . '->another_slot(', join(', ', @_), ")\n";
-        $self->another_signal($self);
+        $self->another_signal(@_);
     }
 }
 
@@ -66,3 +66,8 @@ $ob2->connect('another_signal', $ob1, 'my_second_slot');
 $ob2->connect('another_signal', sub { print "Boo!\n"; });
 
 $ob1->my_signal('Wow!');
+
+$ob2->disconnect('another_signal', $ob1, 'my_slot');
+#$ob2->disconnect('another_signal', $ob1);
+
+$ob1->my_signal('Whoop!');
