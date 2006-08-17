@@ -28,6 +28,10 @@ sub _emit_signal {
     my $sig_name = shift;
     my $src_id   = refaddr($self);
 
+    unless (blessed($self)) {
+        croak "Signal $sig_name must be called on an object\n";
+    }
+
     if (exists($signal_busy{$src_id}->{$sig_name})) {
         croak "Attempt to re-enter signal $sig_name";
     }
