@@ -30,9 +30,13 @@ sub _emit_signal {
         croak "Attempt to re-enter signal $sig_name";
     }
 
+    # Flag this signal as busy
     $signal_busy{$src_id}->{$sig_name}++;
 
+    # Get the slots registered with this signal
     my $slots = $signal_map{$src_id}->{$sig_name};
+
+    # Might have none... It's not an error.
     if (defined $slots) {
         for my $slot (@{$slots}) {
             my ($dst_obj, $dst_method, $options) = @{$slot};
@@ -61,7 +65,11 @@ sub _emit_signal {
 }
 
 sub _connect_usage {
-    croak 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }]';
+    croak 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])';
+}
+
+sub _destroy {
+    my $src_id = shift;
 }
 
 sub connect {
@@ -103,7 +111,9 @@ sub connect {
         no warnings;    # Need this too.
 
         *{ $destroy_func } = sub {
+            _destroy($src_id);
             delete $signal_map{$src_id};
+            delete $signal_busy{$src_id};
             # Chain the existing destructor
             $current_func->(@_);
         };
@@ -160,6 +170,7 @@ sub DESTROY {
     my $src_id = refaddr($self);
 
     delete $signal_map{$src_id};
+    delete $signal_busy{$src_id};
 
     $self->SUPER::DESTROY();
 }
