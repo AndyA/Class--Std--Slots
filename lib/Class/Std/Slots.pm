@@ -4,27 +4,13 @@ use warnings;
 use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
-use Data::Dumper;
-
-# TODO: Either
-#  Having a signal named changed_<attr> makes a wrapper for set_<attr>
-# or
-#  Having a signal named :changed makes wrappers for /all/ set_*
-# or
-#  Attempting to connect to a signal called changed_<attr> auto
-#  generates a wrapper for set_<attr>
-#
-# To do that need:
-#  is_signal to store signal metadata
-#  _has_slots($id, $signal) -> true if a signal has slots - to allow set_
-#  wrappers to skip call to get_* of there are no slots registered for an
-#  attribute.
 
 use version; our $VERSION = qv('0.0.1');
 
-my %signal_map  = ( );
-my %signal_busy = ( );
+my %signal_map  = ( );  # maps id -> signame -> array of connected slots
+my %signal_busy = ( );  # maps id -> signame -> busy flag
 
+# Subs we export to caller's namespace
 my @exported_subs = qw(
     connect
     disconnect
@@ -51,11 +37,11 @@ sub _emit_signal {
     my $src_id   = refaddr($self);
 
     unless (blessed($self)) {
-        croak "Signal $sig_name must be invoked on an object\n";
+        croak "Signal '$sig_name' must be invoked as a method\n";
     }
 
     if (exists($signal_busy{$src_id}->{$sig_name})) {
-        croak "Attempt to re-enter signal $sig_name";
+        croak "Attempt to re-enter signal '$sig_name'";
     }
 
     # Flag this signal as busy
@@ -123,6 +109,7 @@ sub connect {
 
     _connect_usage() unless blessed($src_obj) &&
                             defined($dst_obj);
+
     _check_signal_exists(ref($src_obj), $sig_name);
 
     if (blessed($dst_obj)) {
@@ -259,30 +246,73 @@ __END__
 
 =head1 NAME
 
-Class::Std::Slots - [One line description of module's purpose here]
-
+Class::Std::Slots - Provide signals and slots for standard classes.
 
 =head1 VERSION
 
 This document describes Class::Std::Slots version 0.0.1
 
-
 =head1 SYNOPSIS
 
+    package My::Class::One;
+    use Class::Std;
     use Class::Std::Slots;
+    {
+        signals qw(
+            my_signal
+        );
 
-=for author to fill in:
-    Brief code example(s) here showing commonest usage(s).
-    This section will be as far as many users bother reading
-    so make it as educational and exeplary as possible.
+        sub my_slot {
+            my $self = shift;
+            print "my_slot triggered\n";
+        }
 
+        sub do_stuff {
+            my $self = shift;
+            print "Doing stuff...\n";
+            $self->my_signal;        # send signal
+            print "Done stuff.\n";
+        }
+    }
+
+    package My::Class::Two;
+    use Class::Std;
+    use Class::Std::Slots;
+    {
+        signals qw(
+            another_signal
+        );
+
+        sub another_slot {
+            my $self = shift;
+            print "another_slot triggered\n";
+            $self->another_signal;
+        }
+    }
+
+    package main;
+
+    my $ob1 = My::Class::One->new();
+    my $ob2 = My::Class::Two->new();
+
+    # No signal yet
+    $ob1->do_stuff;
+
+    # Connect to a slot in another class
+    $ob1->connect('my_signal', $ob2, 'another_slot');
+
+    # Fires signal
+    $ob1->do_stuff;
+
+    # Connect an anon sub as well
+    $ob1->connect('my_signal', sub { print "I'm anon...\n"; });
+
+    # Fires signal invoking two slots
+    $ob1->do_stuff;
 
 =head1 DESCRIPTION
 
-=for author to fill in:
-    Write a full description of the module and its features here.
-    Use subsections (=head2, =head3) as appropriate.
-
+The slots and signals metaphor allows
 
 =head1 INTERFACE
 
@@ -295,26 +325,71 @@ This document describes Class::Std::Slots version 0.0.1
 
 =head1 DIAGNOSTICS
 
-=for author to fill in:
-    List every single error and warning message that the module can
-    generate (even the ones that will "never happen"), with a full
-    explanation of each problem, one or more likely causes, and any
-    suggested remedies.
-
 =over
 
-=item C<< Error message here, perhaps with %s placeholders >>
+=item C<< Invalid signal name '%s' >>
 
-[Description of error here]
+Signal names have the same syntax as identifier names - you've tried to
+use a name that contains a character that isn't legal in an identifier.
 
-=item C<< Another error message here >>
+=item C<< Signal '%s' undefined >>
 
-[Description of error here]
+Signals are declared by calling the C<signals> subroutine. You're
+attempting to connect to an undefined signal.
 
-[Et cetera, et cetera]
+=item C<< Signal '%s' must be invoked as a method >>
+
+Signals are fired using normal method call syntax. To fire a signal
+do something like
+
+    $my_obj->some_signal('Args', 'go', 'here');
+
+=item C<< Attempt to re-enter signal '%s' >>
+
+Signals are not allowed to fire themselves directly or indirectly. This
+is an intentional limitation. The ease with which signals can be
+connected to slots in complex patterns makes it easy to introduce
+unintended loops of mutually triggered signals.
+
+=item C<< Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }]) >>
+
+Connect can be called either like this:
+
+    $my_obj->connect('some_signal', $other_obj, 'slot_to_fire');
+
+or like this:
+
+    $my_obj->connect('some_signal', sub { print "Slot fired" });
+
+=item C<< Slot '%s' not handled by %s >>
+
+You're attempting to connect to a slot that isn't implemented by
+the target object. Slots are normal member functions.
+
+=item C<< disconnect must be called as a member >>
+
+Disconnect should be called like this:
+
+    # Disconnect one slot
+    $my_obj->disconnect('some_signal', $other_obj);
+
+or like this:
+
+    # Disconnect all slots for a signal
+    $my_obj->disconnect('some_signal');
+
+or like this:
+
+    # Disconnect all slots for all signals
+    $my_obj->disconnect();
+
+=item C<< Signal '%s' aready declared >>
+
+You're attempting to declare a signal that already exists. This may be
+because it has been declared as a signal or because the signal name
+clashes with a method name.
 
 =back
-
 
 =head1 CONFIGURATION AND ENVIRONMENT
 

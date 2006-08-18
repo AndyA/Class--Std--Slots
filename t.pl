@@ -99,8 +99,11 @@ $ob2->connect('another_signal', sub {
     }
 }, { reveal_source => 1 });
 
+$ob3->connect('another_signal', $ob1, 'my_signal');
+
 $ob1->my_signal('Wow!');
 $ob3->more_signal('More!');
+$ob3->another_signal('Inherited');
 
 $ob2->disconnect('another_signal', $ob1, 'my_slot');
 #$ob2->disconnect('another_signal', $ob1);
