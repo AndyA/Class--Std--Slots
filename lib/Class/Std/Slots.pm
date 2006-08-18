@@ -186,7 +186,7 @@ sub disconnect {
 
             my $slots = $signal_map{$src_id}->{$sig_name};
             if (defined $slots) {
-                # Nasty block to filter out matching slots.
+                # Nasty block to filter out matching connections.
                 @{$slots} = grep {
                     defined $_
                       && defined $_->[0]
@@ -198,12 +198,12 @@ sub disconnect {
             }
         }
         else {
-            # Delete all slots for given signal
+            # Delete all connections for given signal
             delete $signal_map{$src_id}->{$sig_name};
         }
     }
     else {
-        # Delete /all/ slots
+        # Delete /all/ connections for this object
         delete $signal_map{$src_id};
     }
 }
