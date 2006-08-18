@@ -1,26 +1,201 @@
-use Test::More tests => 1;
+use Test::More tests => 19;
 
-package T::Class::One;
-use base qw(Class::Std::Slots);
+my @slot_got = ( );
 
-sigs(qw(
-    my_signal
-));
-
-sub my_slot :slot {
-    print "My slot\n";
+sub got_slot {
+    push @slot_got, @_;
 }
 
-package T::Class::Two;
-use base qw(Class::Std::Slots);
+sub get_got {
+    my $got = join(' ', sort @slot_got);
+    @slot_got = ( );
+    return $got;
+}
 
-sigs(qw(
-    another_signal;
-));
+sub get_err {
+    my $err = $@;
+    $err =~ s{ \n .* }{}xms;
+    $err =~ s{ \s+ at \s+ \S+ \s+ line \s+ \d+ \s* $ }{}xms;
+    return $err;
+}
 
-sub another_slot :slot {
-    print "Another slot\n";
+package My::Class::One;
+use Class::Std;
+use Class::Std::Slots;
+{
+    signals qw(
+        my_signal
+        other_signal
+    );
+
+    sub my_slot {
+        my $self = shift;
+        main::got_slot('my_slot');
+    }
+
+    sub other_slot {
+        my $self = shift;
+        main::got_slot('other_slot');
+        $self->other_signal;
+    }
+
+    sub do_stuff {
+        my $self = shift;
+        $self->my_signal;        # send signal
+    }
+}
+
+package My::Class::Two;
+use Class::Std;
+use Class::Std::Slots;
+{
+    signals qw(
+        another_signal
+    );
+
+    sub another_slot {
+        my $self = shift;
+        main::got_slot('another_slot');
+        $self->another_signal;
+    }
+}
+
+package My::Class::Two::More;
+use base qw(My::Class::Two);
+use Class::Std;
+use Class::Std::Slots;
+{
+    signals qw(
+        unique_to_more
+    );
+
+    sub more_slot {
+        my $self = shift;
+        main::got_slot('more_slot');
+        $self->unique_to_more;
+    }
 }
 
 package main;
-ok(1, 'Always passes');
+
+my $ob1a = My::Class::One->new();
+my $ob1b = My::Class::One->new();
+my $ob2  = My::Class::Two->new();
+my $ob2m = My::Class::Two::More->new();
+
+# No signal yet
+$ob1a->do_stuff;
+is(get_got, '', 'No slots');
+
+# Connect to a slot in another class
+$ob1a->connect('my_signal', $ob2, 'another_slot');
+
+$ob1a->do_stuff;
+is(get_got, 'another_slot', 'One slot');
+
+$ob1a->connect('my_signal', sub { got_slot('ANON'); });
+
+$ob1a->do_stuff;
+is(get_got, 'ANON another_slot', 'Two slots');
+
+$ob1b->do_stuff;
+is(get_got, '', 'No slots, other obj');
+
+# Delete named connection
+$ob1a->disconnect('my_signal', $ob2, 'another_slot');
+
+$ob1a->do_stuff;
+is(get_got, 'ANON', 'Deleted named slot, anon only');
+
+$ob1a->disconnect();
+
+$ob1a->do_stuff;
+is(get_got, '', 'Deleted everything');
+
+# More complex connections
+$ob1a->connect('my_signal', $ob1b, 'my_signal');
+$ob1b->connect('my_signal', $ob2m, 'more_slot');
+
+$ob1a->my_signal;       # Fire directly
+is(get_got, 'more_slot', 'Chained call');
+
+# Test some errors
+eval {
+    $ob1a->connect('my_signal', $ob2m, 'bogus_slot');
+};
+
+is(get_err, "Slot 'bogus_slot' not handled by My::Class::Two::More", 'Bad slot name');
+
+eval {
+    $ob1a->connect('my_signal', my $not_an_obj, 'some_slot');
+};
+
+is(get_err, 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])', 'Bad object');
+
+eval {
+    $ob1a->connect('my_signal', $ob2);
+};
+
+is(get_err, 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])', 'Missing method');
+
+eval {
+    $ob1a->connect('bad signal name', $ob2m, 'more_slot');
+};
+
+is(get_err, "Invalid signal name 'bad signal name'", 'Bad signal name');
+
+eval {
+    $ob2->connect('unique_to_more', $ob1a, 'my_slot');
+};
+
+is(get_err, "Signal 'unique_to_more' undefined", 'Signal only in subclass');
+
+eval {
+    $ob1a->connect('my_signal', $ob2, 'more_slot');
+};
+
+is(get_err, "Slot 'more_slot' not handled by My::Class::Two", 'Slot only in subclass');
+
+# Make sure this test still works after all those errors
+$ob1a->my_signal;       # Fire directly
+is(get_got, 'more_slot', 'Still works');
+
+# Make a simple circular connection
+$ob2m->connect('unique_to_more', $ob2m, 'more_slot');
+
+eval {
+    $ob2m->unique_to_more;
+};
+
+is(get_err, "Attempt to re-enter signal 'unique_to_more'", 'Simple circularity');
+is(get_got, 'more_slot', 'Simple circularity results');
+
+$ob1a->disconnect();
+$ob1b->disconnect();
+$ob2->disconnect();
+$ob2m->disconnect();
+
+# Trigger all the signals...
+for ($ob1a, $ob1b) {
+    $_->my_signal;
+    $_->other_signal;
+}
+
+$ob2->another_signal;
+$ob2m->unique_to_more;
+
+# ...and make sure nothing happened
+is(get_got, '', 'All disconnected');
+
+# Make a more complex loop
+$ob1a->connect('my_signal', $ob1b, 'other_slot');
+$ob1b->connect('other_signal', $ob2, 'another_slot');
+$ob2->connect('another_signal', $ob2m, 'more_slot');
+$ob2m->connect('unique_to_more', $ob1a, 'my_signal');
+
+eval {
+    $ob1a->my_signal;
+};
+
+is(get_err, "Attempt to re-enter signal 'my_signal'", 'Complex circularity');
+is(get_got, 'another_slot more_slot other_slot', 'Complex circularity results');

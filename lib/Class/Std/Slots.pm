@@ -9,6 +9,7 @@ use version; our $VERSION = qv('0.0.1');
 
 my %signal_map  = ( );  # maps id -> signame -> array of connected slots
 my %signal_busy = ( );  # maps id -> signame -> busy flag
+my %patched     = ( );  # classes who's DESTROY we've patched
 
 # Subs we export to caller's namespace
 my @exported_subs = qw(
@@ -123,16 +124,16 @@ sub connect {
 
     my $options     = shift || { };
     my $src_id      = refaddr($src_obj);
+    my $caller      = ref($src_obj);
 
     # Now badness: we replace the DESTROY that Class::Std dropped into
     # the caller's namespace with our own.
-    unless (exists $signal_map{$src_id}) {
+    unless (exists $patched{$caller}) {
         # If there's nothing in the hash for this object we can't have
         # installed our destructor yet - so do it now.
 
         no strict 'refs';
 
-        my $caller          = ref($src_obj);
         my $destroy_func    = $caller . '::DESTROY';
         my $current_func    = *{ $destroy_func }{ CODE };
 
@@ -145,10 +146,13 @@ sub connect {
             # Chain the existing destructor
             $current_func->(@_);
         };
+
+        # Remember we've patched this one...
+        $patched{$caller}++;
     }
 
     # Stash the object and method so we can call it later.
-    weaken($dst_obj) unless $options->{strong};
+    weaken($dst_obj) unless $options->{strong} || ref($dst_obj) eq 'CODE';
     push @{$signal_map{$src_id}->{$sig_name}}, [
         $dst_obj, $dst_method, $options
     ];
@@ -312,16 +316,309 @@ This document describes Class::Std::Slots version 0.0.1
 
 =head1 DESCRIPTION
 
-The slots and signals metaphor allows
+Conventionally the ways in which objects of different classes can interact with
+each other is designed into those classes; changes to that behaviour require
+either changes to the classes in question or the creation of subclasses.
+
+Signals and slots allow objects to be wired together dynamically at run time in
+ways that weren't necessarily anticipated by the designers of the classes. For
+example consider a class that manages time consuming downloads:
+
+    package My::Downloader;
+    use Class::Std;
+    {
+        sub do_download {
+            my $self = shift;
+            # ... do something time consuming ...
+        }
+    }
+
+For a particular application it might be desirable to be able to display a progress
+report as the download progresses. Unfortunately C<My::Downloader> isn't wired to
+allow that. We could improve C<My::Downloader> by providing a stub function that's
+called periodically during a download:
+
+    package My::Downloader::Better;
+    use Class::Std;
+    {
+        sub progress {
+            # do nothing
+        }
+
+        sub do_download {
+            my $self = shift;
+            # ... do something time consuming periodically calling progress() ...
+        }
+    }
+
+Then we could subclass C<My::Downloader::Better> to update a display:
+
+    package My::Downloader::Verbose;
+    use base qw(My::Downloader::Better);
+    use Class::Std;
+    {
+        sub progress {
+            my $self = shift;
+            my $done = shift;
+            print "$done % done\n";
+        }
+    }
+
+That's not bad - but we had to create a subclass - and we'd have to arrange for it
+to be created instead of a C<My::Downloader::Better> anytime we want to use it. If
+displaying the progress involved updating a progress bar in a GUI we'd need to
+embed a reference to the progress bar in each instance of C<My::Downloader::Verbose>.
+
+Instead we could extend C<My::Downloader::Better> to call an arbitrary callback via
+a supplied code reference each time C<progress()> was called ... but then we have to
+implement the interface that allows the callback to be defined. If we also want
+notifications of retries and server failures we'll need still more callbacks. Tedious.
+
+Or we could write C<My::Downloader::Lovely> like this:
+
+    package My::Downloader::Lovely;
+    use Class::Std;
+    use Class::Std::Slots;
+    {
+        signals qw(
+            progress_update
+            server_failure
+        );
+
+        sub do_download {
+            my $self = shift;
+            # ... do something time consuming periodically emitting
+            # a progress_update signal like this:
+            for (@ages) {
+                $self->do_chunk();
+                $self->progress_update($done++);
+            }
+        }
+    }
+
+and use it like this:
+
+    use My::Downloader::Lovely;
+
+    my $lovely = My::Downloader::Lovely->new();
+    $lovely->do_download();
+
+That behaves just like the original C<My::Downloader> example. Now let's hook up the progress
+display - we're using an imaginary GUI toolkit:
+
+    use My::Downloader::Lovely;
+    use Pretty::ProgressBar;
+
+    my $lovely = My::Downloader::Lovely->new();
+    my $pretty = Pretty::ProgressBar->new();
+
+    # Now the clever bit - hook them together. Whenever the
+    # progress_update signal is emitted it'll call
+    # $pretty->update_bar($done);
+    $lovely->connect('progress_update', $pretty, 'update_bar');
+
+    # Do the download with style
+    $lovely->do_download();
+
+We didn't have to subclass or modify C<My::Downloader::Lovely> and we didn't have to clutter its
+interface with methods to allow callbacks to be installed. Each signal can be connected to many
+slots simultaneously; perhaps we want some debug to show up on the console too:
+
+    use My::Downloader::Lovely;
+    use Pretty::ProgressBar;
+
+    my $lovely = My::Downloader::Lovely->new();
+    my $pretty = Pretty::ProgressBar->new();
+
+    # Now the clever bit - hook them together. Whenever the
+    # progress_update signal is emitted it'll call
+    # $pretty->update_bar($done);
+    $lovely->connect('progress_update', $pretty, 'update_bar');
+
+    # Add an anon slot to display progress on the console too
+    $lovely->connect('progress_update', sub { print 'Done: ', $_[0], "\n"; });
+
+    # Do the download with style
+    $lovely->do_download();
+
+Each slot can either be a subroutine reference or an object reference and method name. Anonymous
+slots are particularly useful for debugging but they also provide a lightweight way to extend
+the behaviour of an existing class.
+
+Only classes that emit signals need use C<Class::Std::Slots> - any method in any class can be
+used as a slot.
+
+=head2 Signals?
+
+The signals we refer to here are unrelated to operating system signals. That's why the class is
+called C<Class::Std::Slots> instead of Class::Std::Signals.
 
 =head1 INTERFACE
 
-=for author to fill in:
-    Write a separate section listing the public components of the modules
-    interface. These normally consist of either subroutines that may be
-    exported, or methods that may be called on objects belonging to the
-    classes provided by the module.
+C<Class::Std::Slots> is designed to be used in conjunction with C<Class::Std>. It I<may> work
+with classes not based on C<Class::Std> but this is untested. To use it add
+C<use Class::Std::Slots> just after C<use Class::Std>
 
+    package My::Class;
+    use Class::Std
+    use Class::Std::Slots           # <-- add this
+    {
+        signals qw(                 # <-- add this
+            started
+            progress
+            finished
+            retry
+        );
+
+        sub my_method {
+            my $self = shift;
+            # etc
+        }
+    }
+
+and add a call to C<signals> to declare any signals your class will emit.
+
+C<Class::Std::Slots> will add three public methods to your class: C<signals>, C<connect> and
+C<disconnect>.
+
+=over
+
+=item C<signals>
+
+Declare the list of signals that a class can emit. Multiple calls to C<signals> are allowed
+but each signal should be declared only once. It is an error to redeclare a signal even in
+a subclass or to declare a signal with the same name as a method.
+
+Once declared signals may be called as members of the declaring class and any subclasses.
+To emit a signal simply call it:
+
+    $my_obj->started('Starting download');
+
+Any arguments passed to the signal will be passed to any slots registered with it. Signals
+never have a return value - any return values from slots are silently discarded.
+
+=item C<connect>
+
+Create a connection between a signal and a slot. Connections are made between objects (i.e.
+class instances) rather than between classes. To connect the signal C<started> to a slot
+called C<show_status> do something like this:
+
+    $my_thing->connect('started', $uitools, 'show_status');
+
+Whenever C<$my_thing> emits C<started> C<show_status> will be called with any
+arguments that were passed to C<started>.
+
+To call a non-member subroutine (which may be an anonymous subroutine or closure) do this:
+
+    $my_thing->connect('debug_out', sub {
+        print "@_\n";
+    });
+
+Anonymous subroutines are also useful to patch up impedence mismatches between the slot
+method and the signal. For example if the signal C<progress> is called with two arguments
+(the current progress and the expected total) but the desired slot C<show_progress>
+expects to be passed a percentage use something like this:
+
+    $my_thing->connect('progress', sub {
+        my ($pos, $all) = @_;
+        my $percent = int($pos * 100 / $all);
+        $uitools->show_progress($percent);
+    });
+
+Normally a slot is passed exactly the arguments that were passed to the signal - so when
+C<< $this_obj->some_signal >> has been connected to C<< $that_obj->some_slot >> throwing the
+signal like this:
+
+    $this_obj->some_signal(1, 2, 'Here we go');
+
+will cause C<some_slot> to be called like this:
+
+    $that_obj->some_slot(1, 2, 'Here we go');
+
+Sometimes it is useful to be able to write generic slot functions that can be connected
+to many different signals and that are capable of interacting with the object that emitted
+the signal. The C<reveal_source> option modifies the argument list of the slot function so
+that the first argument is a reference to a hash that describes the source of the signal:
+
+    $this_obj->connect('first_signal',  $generic, 'smart_slot', { reveal_source => 1 });
+    $this_obj->connect('second_signal', $generic, 'smart_slot', { reveal_source => 1 });
+    $that_obj->connect('first_signal',  $generic, 'smart_slot', { reveal_source => 1 });
+
+When C<< $this_obj->first_signal >> is emitted C<< $generic->smart_slot >> will be called with
+this hash ref as its first argument:
+
+    {
+        source  => $this_obj,
+        signal  => 'first_signal',
+        options => { reveal_source => 1 }
+    }
+
+When C<< $this_obj->second_signal >> is emitted the hash will look like this:
+
+    {
+        source  => $this_obj,
+        signal  => 'second_signal',
+        options => { reveal_source => 1 }
+    }
+
+Note that the options hash passed to C<connect> is passed to the slot. This is so that
+additional user defined options can be used to influence the behaviour of the slot
+function.
+
+The options recognised by C<connect> itself are:
+
+=over
+
+=item reveal_source
+
+Modify slot arg list to include a hash that describes the source of the signal.
+
+=item strong
+
+Normally the reference to the object containing the slot method is weakened (by
+calling C<Scalar::Util::weaken> on it). Set this option to make the reference
+strong - which means that once an object has been connected to no other
+references to it need be kept.
+
+Anonymous subroutine slots are always strongly referred to - so there is no
+need to specify the C<strong> option for them.
+
+=back
+
+=item C<disconnect>
+
+Break signal / slot connections. All connections are broken when the signalling
+object is destroyed. To break a connection before then use:
+
+    $obj->disconnect('a_signal', $other_obj, 'method');
+
+To break all connections from a signal to slots in a particular object use:
+
+    $obj->disconnect('a_signal', $other_obj);
+
+To break all connections for a particular signal use:
+
+    $obj->disconnect('a_signal');
+
+And finally to break all connections from a signalling object:
+
+    $obj->disconnect();
+
+In other words each additional argument increases the specificity of the connections
+that are targetted.
+
+Note that it is not possible to disconnect an anonymous slot subroutine without disconnecting
+all other slots connected to the same signal:
+
+    $obj->connect('a_signal', sub { });
+    $obj->connect('a_signal', $other_obj, 'a_slot');
+
+    # Can't target the anon slot individually
+    $obj->disconnect('a_signal');
+
+If this proves to be an enbearable limitation I'll do something about it.
+
+=back
 
 =head1 DIAGNOSTICS
 
@@ -389,53 +686,26 @@ You're attempting to declare a signal that already exists. This may be
 because it has been declared as a signal or because the signal name
 clashes with a method name.
 
+Note that it is illegal to redeclare a signal in a subclass if a parent
+already declares the signal. Since signals can't be declared to do
+anything other than be a signal it makes no sense to redeclare a
+signal in a subclass.
+
 =back
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
-=for author to fill in:
-    A full explanation of any configuration system(s) used by the
-    module, including the names and locations of any configuration
-    files, and the meaning of any environment variables or properties
-    that can be set. These descriptions must also include details of any
-    configuration language used.
-
 Class::Std::Slots requires no configuration files or environment variables.
-
 
 =head1 DEPENDENCIES
 
-=for author to fill in:
-    A list of all the other modules that this module relies upon,
-    including any restrictions on versions, and an indication whether
-    the module is part of the standard Perl distribution, part of the
-    module's distribution, or must be installed separately. ]
-
-None.
-
+Class::Std
 
 =head1 INCOMPATIBILITIES
 
-=for author to fill in:
-    A list of any modules that this module cannot be used in conjunction
-    with. This may be due to name conflicts in the interface, or
-    competition for system or program resources, or due to internal
-    limitations of Perl (for example, many modules that use source code
-    filters are mutually incompatible).
-
 None reported.
 
-
 =head1 BUGS AND LIMITATIONS
-
-=for author to fill in:
-    A list of known problems with the module, together with some
-    indication Whether they are likely to be fixed in an upcoming
-    release. Also a list of restrictions on the features the module
-    does provide: data types that cannot be handled, performance issues
-    and the circumstances in which they may arise, practical
-    limitations on the size of data sets, special cases that are not
-    (yet) handled, etc.
 
 No bugs have been reported.
 
@@ -443,11 +713,9 @@ Please report any bugs or feature requests to
 C<bug-class-std-slots@rt.cpan.org>, or through the web interface at
 L<http://rt.cpan.org>.
 
-
 =head1 AUTHOR
 
 Andy Armstrong  C<< <andy@hexten.net> >>
-
 
 =head1 LICENCE AND COPYRIGHT
 
@@ -455,7 +723,6 @@ Copyright (c) 2006, Andy Armstrong C<< <andy@hexten.net> >>. All rights reserved
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.
-
 
 =head1 DISCLAIMER OF WARRANTY
 
