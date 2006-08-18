@@ -39,7 +39,7 @@ use Class::Std::Slots;
     );
 
     sub BUILD {
-        warn "Build T::Class::Two\n";
+        warn "BUILD T::Class::Two\n";
     }
 
     sub DEMOLISH {
@@ -54,23 +54,41 @@ use Class::Std::Slots;
 }
 
 package T::Class::Two::More;
-use Class::Std;
 use base qw(T::Class::Two);
+use Class::Std;
+use Class::Std::Slots;
 {
+    signals qw(
+        more_signal
+    );
 
+    sub BUILD {
+        warn "BUILD T::Class::Two::More\n";
+    }
+
+    sub DEMOLISH {
+        warn "DEMOLISH T::Class::Two::More\n";
+    }
+
+    sub more_slot {
+        my $self = shift;
+        warn $self . '->more_slot(', join(', ', @_), ")\n";
+    }
 }
 
 package main;
 
 my $ob1 = T::Class::One->new();
 my $ob2 = T::Class::Two->new();
-
-print "Signals handled by ob1: ", join(', ', T::Class::One->signal_names), "\n";
-print "Signals handled by ob2: ", join(', ', $ob2->signal_names), "\n";
+my $ob3 = T::Class::Two::More->new();
 
 $ob1->connect('my_signal',      $ob2, 'another_slot', { reveal_source => 1 });
 $ob2->connect('another_signal', $ob1, 'my_slot');
 $ob2->connect('another_signal', $ob1, 'my_second_slot');
+
+# Connect up the third object
+$ob3->connect('more_signal',    $ob1, 'my_slot');
+$ob2->connect('another_signal', $ob3, 'more_slot');
 
 # Install an anon slot
 $ob2->connect('another_signal', sub {
@@ -82,6 +100,7 @@ $ob2->connect('another_signal', sub {
 }, { reveal_source => 1 });
 
 $ob1->my_signal('Wow!');
+$ob3->more_signal('More!');
 
 $ob2->disconnect('another_signal', $ob1, 'my_slot');
 #$ob2->disconnect('another_signal', $ob1);

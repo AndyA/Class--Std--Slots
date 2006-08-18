@@ -24,13 +24,11 @@ use version; our $VERSION = qv('0.0.1');
 
 my %signal_map  = ( );
 my %signal_busy = ( );
-my %is_signal   = ( );
 
 my @exported_subs = qw(
     connect
     disconnect
     signals
-    signal_names
 );
 
 sub _validate_signal_name {
@@ -44,7 +42,7 @@ sub _check_signal_exists {
     my $sig_name = shift;
     _validate_signal_name($sig_name);
     croak "Signal '$sig_name' undefined"
-        unless exists $is_signal{$class}->{$sig_name};
+        unless UNIVERSAL::can($class, $sig_name);
 }
 
 sub _emit_signal {
@@ -218,9 +216,7 @@ sub signals {
         _validate_signal_name($sig_name);
 
         croak "Signal '$sig_name' already declared"
-            if exists $is_signal{$caller}->{$sig_name};
-
-        $is_signal{$caller}->{$sig_name}++;
+            if UNIVERSAL::can($caller, $sig_name);
 
         my $sig_func = $caller . '::' . $sig_name;
 
@@ -235,12 +231,6 @@ sub signals {
     }
 
     return;
-}
-
-sub signal_names {
-    my $self  = shift;
-    my $class = ref($self) || $self;
-    return keys %{$is_signal{$class}};;
 }
 
 sub import {
