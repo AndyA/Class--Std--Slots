@@ -53,6 +53,13 @@ use Class::Std::Slots;
     }
 }
 
+package T::Class::Two::More;
+use Class::Std;
+use base qw(T::Class::Two);
+{
+
+}
+
 package main;
 
 my $ob1 = T::Class::One->new();

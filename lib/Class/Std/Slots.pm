@@ -6,6 +6,20 @@ use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
 use Data::Dumper;
 
+# TODO: Either
+#  Having a signal named changed_<attr> makes a wrapper for set_<attr>
+# or
+#  Having a signal named :changed makes wrappers for /all/ set_*
+# or
+#  Attempting to connect to a signal called changed_<attr> auto
+#  generates a wrapper for set_<attr>
+#
+# To do that need:
+#  is_signal to store signal metadata
+#  _has_slots($id, $signal) -> true if a signal has slots - to allow set_
+#  wrappers to skip call to get_* of there are no slots registered for an
+#  attribute.
+
 use version; our $VERSION = qv('0.0.1');
 
 my %signal_map  = ( );
