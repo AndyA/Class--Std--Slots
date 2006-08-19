@@ -5,7 +5,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
 
-use version; our $VERSION = qv('0.0.1');
+use version; our $VERSION = qv('0.0.2');
 
 my %signal_map  = ( );  # maps id -> signame -> array of connected slots
 my %signal_busy = ( );  # maps id -> signame -> busy flag
@@ -28,6 +28,12 @@ sub _check_signal_exists {
     my $class    = shift;
     my $sig_name = shift;
     _validate_signal_name($sig_name);
+
+    # OK to call UNIVERSAL::can() here because we do actually want to
+    # know whether a method named after this signal exists rather than
+    # whether this class or one of its superclasses can respond to
+    # a particular message - so we're not interested in any overridden
+    # version of can()
     croak "Signal '$sig_name' undefined"
         unless UNIVERSAL::can($class, $sig_name);
 }
@@ -127,7 +133,9 @@ sub connect {
     my $caller      = ref($src_obj);
 
     # Now badness: we replace the DESTROY that Class::Std dropped into
-    # the caller's namespace with our own.
+    # the caller's namespace with our own. See the note under BUGS AND
+    # LIMITATIONS about this technique for replacing Class::Std's
+    # destructor.
     unless (exists $patched{$caller}) {
         # If there's nothing in the hash for this object we can't have
         # installed our destructor yet - so do it now.
@@ -254,7 +262,7 @@ Class::Std::Slots - Provide signals and slots for standard classes.
 
 =head1 VERSION
 
-This document describes Class::Std::Slots version 0.0.1
+This document describes Class::Std::Slots version 0.0.2
 
 =head1 SYNOPSIS
 
@@ -305,13 +313,13 @@ This document describes Class::Std::Slots version 0.0.1
     # Connect to a slot in another class
     $ob1->connect('my_signal', $ob2, 'another_slot');
 
-    # Fires signal
+    # Emits signal
     $ob1->do_stuff;
 
     # Connect an anon sub as well
     $ob1->connect('my_signal', sub { print "I'm anon...\n"; });
 
-    # Fires signal invoking two slots
+    # Emits signal invoking two slots
     $ob1->do_stuff;
 
 =head1 DESCRIPTION
@@ -421,8 +429,10 @@ display - we're using an imaginary GUI toolkit:
     $lovely->do_download();
 
 We didn't have to subclass or modify C<My::Downloader::Lovely> and we didn't have to clutter its
-interface with methods to allow callbacks to be installed. Each signal can be connected to many
-slots simultaneously; perhaps we want some debug to show up on the console too:
+interface with methods to allow callbacks to be installed.
+
+Each signal can be connected to many slots simultaneously; perhaps we want some debug to show
+up on the console too:
 
     use My::Downloader::Lovely;
     use Pretty::ProgressBar;
@@ -481,6 +491,10 @@ and add a call to C<signals> to declare any signals your class will emit.
 C<Class::Std::Slots> will add three public methods to your class: C<signals>, C<connect> and
 C<disconnect>.
 
+=head2 Methods created automatically
+
+The following subroutines are installed in any class that uses the C<Class::Std::Slots> module.
+
 =over
 
 =item C<signals>
@@ -526,7 +540,7 @@ expects to be passed a percentage use something like this:
     });
 
 Normally a slot is passed exactly the arguments that were passed to the signal - so when
-C<< $this_obj->some_signal >> has been connected to C<< $that_obj->some_slot >> throwing the
+C<< $this_obj->some_signal >> has been connected to C<< $that_obj->some_slot >> emitting the
 signal like this:
 
     $this_obj->some_signal(1, 2, 'Here we go');
@@ -588,7 +602,7 @@ need to specify the C<strong> option for them.
 =item C<disconnect>
 
 Break signal / slot connections. All connections are broken when the signalling
-object is destroyed. To break a connection before then use:
+object is destroyed. To break a connection at any other time use:
 
     $obj->disconnect('a_signal', $other_obj, 'method');
 
@@ -650,13 +664,16 @@ unintended loops of mutually triggered signals.
 
 =item C<< Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }]) >>
 
-Connect can be called either like this:
+C<connect> can be called either like this:
 
     $my_obj->connect('some_signal', $other_obj, 'slot_to_fire');
 
 or like this:
 
     $my_obj->connect('some_signal', sub { print "Slot fired" });
+
+In either case an anonymous hash containing options may be passed as an
+additional argument.
 
 =item C<< Slot '%s' not handled by %s >>
 
@@ -668,6 +685,11 @@ the target object. Slots are normal member functions.
 Disconnect should be called like this:
 
     # Disconnect one slot
+    $my_obj->disconnect('some_signal', $other_obj, 'slot_name');
+
+or like this:
+
+    # Disconnect all slots in the specified object
     $my_obj->disconnect('some_signal', $other_obj);
 
 or like this:
@@ -708,6 +730,27 @@ None reported.
 =head1 BUGS AND LIMITATIONS
 
 No bugs have been reported.
+
+Connecting the same slot to a signal multiple times actually makes multiple
+connections and therefore invokes the slot as many times as it was registered
+when the signal is emitted. Arguably only one connection to each slot should
+be allowed. Let me know.
+
+There is currently no way to disconnect an anonymous sub slot without also
+disconnecting other slots from the same signal.
+
+C<Class::Std::Slots> replaces the DESTROY sub injected into the caller's
+namespace by C<Class::Std> and arranges to call the original destructor
+after doing its own cleanup. This may interact badly with other modules that
+also replace the C<Class::Std> destructor - although it is designed to ensure
+it always calls whatever destructor it finds. Suggestions for a neater way
+of chaining our destructor gratefully received.
+
+I'm not sure that the code that prevents signals from re-entering (i.e. it's
+an error to emit a signal if that signal is already being handled) might not
+prevent some (fairly complex) techniques. If this proves to be a limitation
+in practice it would be possible to add an option to each connection that
+would allow that connection to be re-entrant.
 
 Please report any bugs or feature requests to
 C<bug-class-std-slots@rt.cpan.org>, or through the web interface at
