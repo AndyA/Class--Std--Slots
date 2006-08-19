@@ -9,7 +9,7 @@ use version; our $VERSION = qv('0.0.2');
 
 my %signal_map  = ( );  # maps id -> signame -> array of connected slots
 my %signal_busy = ( );  # maps id -> signame -> busy flag
-my %patched     = ( );  # classes who's DESTROY we've patched
+my %patched     = ( );  # classes whose DESTROY we've patched
 
 # Subs we export to caller's namespace
 my @exported_subs = qw(
@@ -96,6 +96,7 @@ sub _emit_signal {
     # Remove busy flag
     delete $signal_busy{$src_id}->{$sig_name};
 
+    # Rethrow any error
     die if $@;
 }
 
@@ -167,6 +168,7 @@ sub connect {
         *{ $destroy_func } = sub {
             # Destroy our members
             _destroy($src_id);
+
             # Chain the existing destructor
             $current_func->(@_);
         };
