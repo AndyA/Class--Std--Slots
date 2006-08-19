@@ -814,7 +814,8 @@ Class::Std
 
 =head1 INCOMPATIBILITIES
 
-None reported.
+Only known to work in conjuction with C<Class::Std>. Only tested when used
+with C<Class::Std> in the way shown in this document.
 
 =head1 BUGS AND LIMITATIONS
 
