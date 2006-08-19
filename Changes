@@ -3,5 +3,8 @@ Revision history for Class-Std-Slots
 0.0.1  Wed Aug 16 16:22:14 2006
        Initial release.
 
-0.0.2  Wed Aug 17 02:10:00 2006
+0.0.2  Thu Aug 17 02:10:00 2006
        Added has_slots.
+
+0.0.3  Sat Aug 19 16:52:44 2006
+       Added emit_signal and support for undeclared signals.
