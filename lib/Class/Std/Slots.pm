@@ -16,6 +16,7 @@ my @exported_subs = qw(
     connect
     disconnect
     signals
+    has_slots
 );
 
 sub _validate_signal_name {
@@ -98,14 +99,29 @@ sub _emit_signal {
     die if $@;
 }
 
-sub _connect_usage {
-    croak 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])';
-}
-
 sub _destroy {
     my $src_id = shift;
     delete $signal_map{$src_id};
     delete $signal_busy{$src_id};
+}
+
+sub has_slots {
+    my $src_obj     = shift;
+    my $sig_name    = shift;
+
+    croak 'Usage: $obj->has_slots($sig_name)'
+        unless blessed $src_obj &&
+               defined $sig_name;
+
+    _check_signal_exists(ref($src_obj), $sig_name);
+
+    my $src_id   = refaddr($src_obj);
+
+    return exists $signal_map{$src_id}->{$sig_name};
+}
+
+sub _connect_usage {
+    croak 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])';
 }
 
 sub connect {
@@ -463,6 +479,23 @@ used as a slot.
 The signals we refer to here are unrelated to operating system signals. That's why the class is
 called C<Class::Std::Slots> instead of Class::Std::Signals.
 
+=head2 Further reading
+
+Sarah Thompson has produced a generic signals and slots library for C++:
+
+L<http://sigslot.sourceforge.net/>
+
+The accompanying documentation includes an excellent exploration of the benefits of signals and slots.
+
+Qt (C++ again) uses signals and slots extensively. Consult the Qt documentation and in particular
+the section on L<signals and slots|http://doc.trolltech.com/3.3/signalsandslots.html> for more
+information:
+
+L<http://doc.trolltech.com/3.3/signalsandslots.html>
+
+Other UI toolkits including NextStep / Cocoa / GNUStep use mechanisms similar to signals and slots
+in all but name.
+
 =head1 INTERFACE
 
 C<Class::Std::Slots> is designed to be used in conjunction with C<Class::Std>. It I<may> work
@@ -488,8 +521,8 @@ C<use Class::Std::Slots> just after C<use Class::Std>
 
 and add a call to C<signals> to declare any signals your class will emit.
 
-C<Class::Std::Slots> will add three public methods to your class: C<signals>, C<connect> and
-C<disconnect>.
+C<Class::Std::Slots> will add four public methods to your class: C<signals>, C<connect>,
+C<disconnect> and C<has_slots>.
 
 =head2 Methods created automatically
 
@@ -497,7 +530,7 @@ The following subroutines are installed in any class that uses the C<Class::Std:
 
 =over
 
-=item C<signals>
+=item C<signals( signals )>
 
 Declare the list of signals that a class can emit. Multiple calls to C<signals> are allowed
 but each signal should be declared only once. It is an error to redeclare a signal even in
@@ -511,7 +544,7 @@ To emit a signal simply call it:
 Any arguments passed to the signal will be passed to any slots registered with it. Signals
 never have a return value - any return values from slots are silently discarded.
 
-=item C<connect>
+=item C<connect($signame, ...)>
 
 Create a connection between a signal and a slot. Connections are made between objects (i.e.
 class instances) rather than between classes. To connect the signal C<started> to a slot
@@ -599,7 +632,7 @@ need to specify the C<strong> option for them.
 
 =back
 
-=item C<disconnect>
+=item C<disconnect($signame, ...)>
 
 Break signal / slot connections. All connections are broken when the signalling
 object is destroyed. To break a connection at any other time use:
@@ -631,6 +664,26 @@ all other slots connected to the same signal:
     $obj->disconnect('a_signal');
 
 If this proves to be an enbearable limitation I'll do something about it.
+
+=item C<has_slots($sig_name)>
+
+In cases where emitting a signal involves costly computation C<has_slots>
+can be called to check whether a signal has any registered slots and if
+not skip both the expensive computation and the signal call.
+
+    if ($self->has_slots('expensive_signal') {
+        my @sig_args = $self->do_expensive_sums();
+        $self->expensive_signal(@sig_args);
+    }
+
+Note that there is no benefit in guarding simple signal calls with a call
+to has_slots:
+
+    # Don't do this
+    $self->cheap_signal() if $self->has_slots('cheap_signal');
+
+    # Instead just do
+    $self->cheap_signal();
 
 =back
 

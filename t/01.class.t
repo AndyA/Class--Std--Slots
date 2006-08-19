@@ -1,4 +1,4 @@
-use Test::More tests => 19;
+use Test::More tests => 23;
 
 my @slot_got = ( );
 
@@ -83,12 +83,18 @@ my $ob1b = My::Class::One->new();
 my $ob2  = My::Class::Two->new();
 my $ob2m = My::Class::Two::More->new();
 
+ok( ! $ob1a->has_slots('my_signal'), 'No slots');
+
 # No signal yet
 $ob1a->do_stuff;
 is(get_got, '', 'No slots');
 
 # Connect to a slot in another class
 $ob1a->connect('my_signal', $ob2, 'another_slot');
+
+ok(   $ob1a->has_slots('my_signal'),    'Has slots'     );
+ok( ! $ob1b->has_slots('my_signal'),    'No slots (2)'   );
+ok( ! $ob1a->has_slots('other_signal'), 'No slots (3)'  );
 
 $ob1a->do_stuff;
 is(get_got, 'another_slot', 'One slot');
