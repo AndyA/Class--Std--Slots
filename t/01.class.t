@@ -14,6 +14,7 @@ sub get_got {
 
 sub get_err {
     my $err = $@;
+    # Tidy up error message
     $err =~ s{ \n .* }{}xms;
     $err =~ s{ \s+ at \s+ \S+ \s+ line \s+ \d+ \s* $ }{}xms;
     return $err;
@@ -36,7 +37,10 @@ use Class::Std::Slots;
     sub other_slot {
         my $self = shift;
         main::got_slot('other_slot');
-        $self->other_signal;
+        # Guarded with has_slots just to make sure it doesn't
+        # make a difference. Don't do this in real code if the
+        # signal call is computationally cheap.
+        $self->other_signal if $self->has_slots('other_signal');
     }
 
     sub do_stuff {
