@@ -1,6 +1,7 @@
-use Test::More tests => 23;
+use Test::More tests => 26;
 
 my @slot_got = ( );
+my $rc;
 
 sub got_slot {
     push @slot_got, @_;
@@ -180,10 +181,9 @@ eval {
 is(get_err, "Attempt to re-enter signal 'unique_to_more'", 'Simple circularity');
 is(get_got, 'more_slot', 'Simple circularity results');
 
-$ob1a->disconnect();
-$ob1b->disconnect();
-$ob2->disconnect();
-$ob2m->disconnect();
+for ($ob1a, $ob1b, $ob2, $ob2m) {
+    $_->disconnect();
+}
 
 # Trigger all the signals...
 for ($ob1a, $ob1b) {
@@ -209,3 +209,21 @@ eval {
 
 is(get_err, "Attempt to re-enter signal 'my_signal'", 'Complex circularity');
 is(get_got, 'another_slot more_slot other_slot', 'Complex circularity results');
+
+# Check that has_slots can be called on an undeclared signals
+
+eval {
+    $rc = $ob1a->has_slots('made_up_signal_name');
+};
+
+ok( ! $rc, 'has_slots with made up signal name');
+is(get_err, '', 'has_slots with made up signal name - not an error');
+
+for ($ob1a, $ob1b, $ob2, $ob2m) {
+    $_->disconnect();
+}
+
+$ob1a->connect('made_up_signal_name', $ob1b, 'other_slot', { undef_ok => 1 });
+$ob1a->emit_signal('made_up_signal_name');
+
+is(get_got, 'other_slot', 'Synthetic signal name');

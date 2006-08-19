@@ -5,7 +5,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
 
-use version; our $VERSION = qv('0.0.2');
+use version; our $VERSION = qv('0.0.3');
 
 my %signal_map  = ( );  # maps id -> signame -> array of connected slots
 my %signal_busy = ( );  # maps id -> signame -> busy flag
@@ -17,6 +17,7 @@ my @exported_subs = qw(
     disconnect
     signals
     has_slots
+    emit_signal
 );
 
 sub _validate_signal_name {
@@ -37,6 +38,14 @@ sub _check_signal_exists {
     # version of can()
     croak "Signal '$sig_name' undefined"
         unless UNIVERSAL::can($class, $sig_name);
+}
+
+sub emit_signal {
+    my $self     = shift;
+    my $sig_name = shift;
+
+    _validate_signal_name($sig_name);
+    _emit_signal($self, $sig_name, @_);
 }
 
 sub _emit_signal {
@@ -114,9 +123,8 @@ sub has_slots {
         unless blessed $src_obj &&
                defined $sig_name;
 
-    _check_signal_exists(ref($src_obj), $sig_name);
-
-    my $src_id   = refaddr($src_obj);
+    _validate_signal_name($sig_name);
+    my $src_id = refaddr($src_obj);
 
     return exists $signal_map{$src_id}->{$sig_name};
 }
@@ -134,8 +142,6 @@ sub connect {
     _connect_usage() unless blessed($src_obj) &&
                             defined($dst_obj);
 
-    _check_signal_exists(ref($src_obj), $sig_name);
-
     if (blessed($dst_obj)) {
         $dst_method = shift || _connect_usage();
         croak "Slot '$dst_method' not handled by " . ref($dst_obj)
@@ -146,6 +152,14 @@ sub connect {
     }
 
     my $options     = shift || { };
+
+    if ($options->{undef_ok}) {
+        _validate_signal_name($sig_name);
+    }
+    else {
+        _check_signal_exists(ref($src_obj), $sig_name)
+    }
+
     my $src_id      = refaddr($src_obj);
     my $caller      = ref($src_obj);
 
@@ -195,13 +209,13 @@ sub disconnect {
 
     if (@_) {
         my $sig_name = shift;
-        _check_signal_exists(ref($src_obj), $sig_name);
+        my $slots = $signal_map{$src_id}->{$sig_name};
+
         if (@_) {
             my $dst_obj     = shift;
             my $dst_method  = shift;    # optional - undef is ok in the grep below
             my $dst_id      = refaddr($dst_obj);
 
-            my $slots = $signal_map{$src_id}->{$sig_name};
             if (defined $slots) {
                 # Nasty block to filter out matching connections.
                 @{$slots} = grep {
@@ -280,7 +294,7 @@ Class::Std::Slots - Provide signals and slots for standard classes.
 
 =head1 VERSION
 
-This document describes Class::Std::Slots version 0.0.2
+This document describes Class::Std::Slots version 0.0.3
 
 =head1 SYNOPSIS
 
@@ -490,8 +504,7 @@ L<http://sigslot.sourceforge.net/>
 The accompanying documentation includes an excellent exploration of the benefits of signals and slots.
 
 Qt (C++ again) uses signals and slots extensively. Consult the Qt documentation and in particular
-the section on L<signals and slots|http://doc.trolltech.com/3.3/signalsandslots.html> for more
-information:
+the section on signals and slots for more information:
 
 L<http://doc.trolltech.com/3.3/signalsandslots.html>
 
@@ -523,8 +536,8 @@ C<use Class::Std::Slots> just after C<use Class::Std>
 
 and add a call to C<signals> to declare any signals your class will emit.
 
-C<Class::Std::Slots> will add four public methods to your class: C<signals>, C<connect>,
-C<disconnect> and C<has_slots>.
+C<Class::Std::Slots> will add five public methods to your class: C<signals>, C<connect>,
+C<disconnect>, C<has_slots> and C<emit_signal>.
 
 =head2 Methods created automatically
 
@@ -546,7 +559,7 @@ To emit a signal simply call it:
 Any arguments passed to the signal will be passed to any slots registered with it. Signals
 never have a return value - any return values from slots are silently discarded.
 
-=item C<connect($signame, ...)>
+=item C<connect($sig_name, ...)>
 
 Create a connection between a signal and a slot. Connections are made between objects (i.e.
 class instances) rather than between classes. To connect the signal C<started> to a slot
@@ -632,9 +645,17 @@ references to it need be kept.
 Anonymous subroutine slots are always strongly referred to - so there is no
 need to specify the C<strong> option for them.
 
+=item undef_ok
+
+Allow a connection to be made to an undefined signal. It is possible for an object
+to emit arbitrary signals by calling C<emit_signal>. Normally C<connect> checks that
+a signal has been declared before connecting to it (bugs caused by slightly misnamed
+signals are particularly frustrating). This flag overrides that check and makes it
+your responsibility to get the signal name right.
+
 =back
 
-=item C<disconnect($signame, ...)>
+=item C<disconnect($sig_name, ...)>
 
 Break signal / slot connections. All connections are broken when the signalling
 object is destroyed. To break a connection at any other time use:
@@ -666,6 +687,19 @@ all other slots connected to the same signal:
     $obj->disconnect('a_signal');
 
 If this proves to be an enbearable limitation I'll do something about it.
+
+=item C<emit_signal($sig_name, ...)>
+
+It's not always possible to pre-declare all the signals an object may emit. For example an XML
+processor may emit signals corresponding to the names of tags in the parsed XML; in that case
+it would be overly restrictive to require pre-declaration of the signals.
+
+To emit an arbitrary signal - which may or may not have been declared - call emit() directly
+like this:
+
+    $self->emit_signal('made_up_signal', @sig_args);
+
+Pass C<connect> the C<undef_ok> option to connect to an undeclared signal.
 
 =item C<has_slots($sig_name)>
 
