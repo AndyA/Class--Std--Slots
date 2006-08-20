@@ -810,7 +810,7 @@ Class::Std::Slots requires no configuration files or environment variables.
 
 =head1 DEPENDENCIES
 
-Class::Std
+C<Class::Std>
 
 =head1 INCOMPATIBILITIES
 
