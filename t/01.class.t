@@ -1,4 +1,4 @@
-use Test::More tests => 26;
+use Test::More tests => 27;
 
 # TODO: More tests for disconnection syntax. Make sure the correct things
 # always get disconnected. More tests for arrays of signal names.
@@ -103,6 +103,7 @@ $ob1a->connect('my_signal', $ob2, 'another_slot');
 ok(   $ob1a->has_slots('my_signal'),    'Has slots'     );
 ok( ! $ob1b->has_slots('my_signal'),    'No slots (2)'   );
 ok( ! $ob1a->has_slots('other_signal'), 'No slots (3)'  );
+ok(   $ob1a->has_slots(['other_signal', 'my_signal']), 'Has multiple slots' );
 
 $ob1a->do_stuff;
 is(get_got, 'another_slot', 'One slot');
