@@ -1,0 +1,9 @@
+Make connect, disconnect (and possibly has_slots) accept an anon array of signal names to work with multiple signals at once.
+
+Devise some examples and write an article
+    Software ICs - simple logic simulations, irony of OO Software IC metaphor
+    File walker - emit signals for files, directories
+    XML parser?
+    Language preprocessor - parser fires different signals for preprocessor lines, comments, normal lines
+    Web stuff?
+    UI stuff? (obvious but maybe still useful)
