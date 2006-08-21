@@ -20,35 +20,46 @@ my @exported_subs = qw(
     emit_signal
 );
 
-sub _validate_signal_name {
-    my $sig_name = shift;
-    croak "Invalid signal name '$sig_name'"
-        unless $sig_name =~ /^\w(?:[\w\d])*$/;
+sub _massage_signal_names {
+    my $sig_names = shift;
+
+    croak "Missing signal name"
+        unless defined($sig_names);
+
+    $sig_names = [ $sig_names ]
+        if ref($sig_names) eq 'SCALAR';
+        
+    croak "Signal name must be a scalar or an array reference"
+        unless ref($sig_names) eq 'ARRAY';
+
+    for my $sig_name (@{$sig_names}) {
+        croak "Invalid signal name '$sig_name'"
+            unless $sig_name =~ /^\w(?:[\w\d])*$/;
+    }
+    
+    return $sig_names;
 }
 
-sub _check_signal_exists {
-    my $class    = shift;
-    my $sig_name = shift;
-    _validate_signal_name($sig_name);
+sub _check_signals_exist {
+    my $class     = shift;
+    my $sig_names = shift;
 
-    # OK to call UNIVERSAL::can() here because we do actually want to
-    # know whether a method named after this signal exists rather than
-    # whether this class or one of its superclasses can respond to
-    # a particular message - so we're not interested in any overridden
-    # version of can()
-    croak "Signal '$sig_name' undefined"
-        unless UNIVERSAL::can($class, $sig_name);
+    for my $sig_name (@{$sig_names}) {
+        # OK to call UNIVERSAL::can() here because we do actually want to
+        # know whether a method named after this signal exists rather than
+        # whether this class or one of its superclasses can respond to
+        # a particular message - so we're not interested in any overridden
+        # version of can()
+        croak "Signal '$sig_name' undefined"
+            unless UNIVERSAL::can($class, $sig_name);
+    }
 }
 
 sub emit_signal {
     my $self        = shift;
-    my $sig_names   = shift;
-
-    $sig_names = [ $sig_names ]
-        unless ref($sig_names) eq 'ARRAY';
+    my $sig_names   = _massage_signal_names(shift);
 
     for my $sig_name (@{$sig_names}) {
-        _validate_signal_name($sig_name);
         _emit_signal($self, $sig_name, @_);
     }
 }
@@ -122,17 +133,12 @@ sub _destroy {
 
 sub has_slots {
     my $src_obj     = shift;
-    my $sig_names   = shift;
+    my $sig_names   = _massage_signal_names(shift);
 
     croak 'Usage: $obj->has_slots($sig_name)'
-        unless blessed $src_obj &&
-               defined $sig_names;
-
-    $sig_names = [ $sig_names ]
-        unless ref($sig_names) eq 'ARRAY';
+        unless blessed $src_obj;
 
     for my $sig_name (@{$sig_names}) {
-        _validate_signal_name($sig_name);
         my $src_id = refaddr($src_obj);
         return 1 if exists $signal_map{$src_id}->{$sig_name};
     }
@@ -146,7 +152,7 @@ sub _connect_usage {
 
 sub connect {
     my $src_obj     = shift;
-    my $sig_names   = shift;
+    my $sig_names   = _massage_signal_names(shift);
     my $dst_obj     = shift;
     my $dst_method;
 
@@ -166,20 +172,14 @@ sub connect {
     my $src_id      = refaddr($src_obj);
     my $caller      = ref($src_obj);
 
-    weaken($dst_obj) unless $options->{strong} || ref($dst_obj) eq 'CODE';
+    weaken($dst_obj) 
+        unless $options->{strong} 
+                || ref($dst_obj) eq 'CODE';
 
-    # Turn a single signal name into an anon array
-    $sig_names = [ $sig_names ]
-        unless ref($sig_names) eq 'ARRAY';
+    _check_signals_exist($sig_names)
+        unless $options->{undeclared};
 
     for my $sig_name (@{$sig_names}) {
-        if ($options->{undeclared}) {
-            _validate_signal_name($sig_name);
-        }
-        else {
-            _check_signal_exists(ref($src_obj), $sig_name)
-        }
-
         # Stash the object and method so we can call it later.
         push @{$signal_map{$src_id}->{$sig_name}}, [
             $dst_obj, $dst_method, $options
@@ -225,13 +225,10 @@ sub disconnect {
         unless blessed $src_obj;
 
     if (@_) {
-        my $sig_names   = shift;
+        my $sig_names   = _massage_signal_names(shift);
         my $dst_obj     = shift;    # optional
         my $dst_method  = shift;    # optional - undef is ok in the grep below
         my $dst_id      = refaddr($dst_obj);
-        
-        $sig_names = [ $sig_names ]
-            unless ref($sig_names) eq 'ARRAY';
 
         for my $sig_name (@{$sig_names}) {
             my $slots = $signal_map{$src_id}->{$sig_name};
@@ -263,11 +260,9 @@ sub disconnect {
 
 sub signals {
     my $caller = caller;
+    my $sig_names = _massage_signal_names(\@_);
 
-    for my $sig_name (@_) {
-        # Name OK?
-        _validate_signal_name($sig_name);
-
+    for my $sig_name (@{$sig_names}) {
         croak "Signal '$sig_name' already declared"
             if UNIVERSAL::can($caller, $sig_name);
 
