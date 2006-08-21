@@ -1,5 +1,8 @@
 use Test::More tests => 26;
 
+# TODO: More tests for disconnection syntax. Make sure the correct things
+# always get disconnected. More tests for arrays of signal names.
+
 my @slot_got = ( );
 my $rc;
 
@@ -124,7 +127,7 @@ $ob1a->do_stuff;
 is(get_got, '', 'Deleted everything');
 
 # More complex connections
-$ob1a->connect('my_signal', $ob1b, 'my_signal');
+$ob1a->connect(['my_signal'], $ob1b, 'my_signal');
 $ob1b->connect('my_signal', $ob2m, 'more_slot');
 
 $ob1a->my_signal;       # Fire directly

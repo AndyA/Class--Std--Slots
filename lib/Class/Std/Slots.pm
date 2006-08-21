@@ -604,6 +604,11 @@ expects to be passed a percentage use something like this:
         $uitools->show_progress($percent);
     });
 
+A slot may be connected to multiple signals at the same time by passing an array reference
+in place of the signal name:
+
+    $my_thing->connect(['debug_out', 'warning_out'], $logger, 'trace');
+
 Normally a slot is passed exactly the arguments that were passed to the signal - so when
 C<< $this_obj->some_signal >> has been connected to C<< $that_obj->some_slot >> emitting the
 signal like this:
@@ -694,6 +699,10 @@ And finally to break all connections from a signalling object:
 In other words each additional argument increases the specificity of the connections
 that are targetted.
 
+As with connect a reference to an array of signal names may be passed:
+
+    $obj->disconnect(['sig1', 'sig2', 'sig3'], $my_slotz);
+
 Note that it is not possible to disconnect an anonymous slot subroutine without disconnecting
 all other slots connected to the same signal:
 
@@ -718,10 +727,15 @@ like this:
 
 Pass C<connect> the C<undeclared> option to connect to an undeclared signal.
 
+Multiple signals may be emitted at the same time (or rather one after another) by passing a
+reference to an array of signal names:
+
+    $self->emit_signal(['sig1', 'sig2'], @sig_args);
+    
 =item C<has_slots($sig_name)>
 
 In cases where emitting a signal involves costly computation C<has_slots>
-can be called to check whether a signal has any registered slots and if
+can be called to check whether a signal has any connected slots and if
 not skip both the expensive computation and the signal call.
 
     if ($self->has_slots('expensive_signal') {
@@ -738,6 +752,10 @@ to has_slots:
     # Instead just do
     $self->cheap_signal();
 
+As usual a reference to an array of signal names may be passed in which
+case C<has_slots> will return a true value if any of the named signals
+has connected slots.
+
 =back
 
 =head1 DIAGNOSTICS
@@ -748,6 +766,18 @@ to has_slots:
 
 Signal names have the same syntax as identifier names - you've tried to
 use a name that contains a character that isn't legal in an identifier.
+
+=item C<< Signal name must be a scalar or an array reference >>
+
+Either pass a single signal name like this:
+
+    $obj->has_slots('sig1');
+
+Or pass a reference to an array of signal names like this:
+
+    $obj->has_slots(['sig1', 'sig2', 'sig3']);
+
+This applies to all methods that accept a signal name.
 
 =item C<< Signal '%s' undefined >>
 
