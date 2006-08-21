@@ -27,7 +27,7 @@ sub _massage_signal_names {
         unless defined($sig_names);
 
     $sig_names = [ $sig_names ]
-        if ref($sig_names) eq 'SCALAR';
+        unless ref($sig_names);
         
     croak "Signal name must be a scalar or an array reference"
         unless ref($sig_names) eq 'ARRAY';
@@ -176,7 +176,7 @@ sub connect {
         unless $options->{strong} 
                 || ref($dst_obj) eq 'CODE';
 
-    _check_signals_exist($sig_names)
+    _check_signals_exist($caller, $sig_names)
         unless $options->{undeclared};
 
     for my $sig_name (@{$sig_names}) {
