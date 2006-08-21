@@ -41,11 +41,16 @@ sub _check_signal_exists {
 }
 
 sub emit_signal {
-    my $self     = shift;
-    my $sig_name = shift;
+    my $self        = shift;
+    my $sig_names   = shift;
 
-    _validate_signal_name($sig_name);
-    _emit_signal($self, $sig_name, @_);
+    $sig_names = [ $sig_names ]
+        unless ref($sig_names) eq 'ARRAY';
+
+    for my $sig_name (@{$sig_names}) {
+        _validate_signal_name($sig_name);
+        _emit_signal($self, $sig_name, @_);
+    }
 }
 
 sub _emit_signal {
@@ -117,16 +122,22 @@ sub _destroy {
 
 sub has_slots {
     my $src_obj     = shift;
-    my $sig_name    = shift;
+    my $sig_names   = shift;
 
     croak 'Usage: $obj->has_slots($sig_name)'
         unless blessed $src_obj &&
-               defined $sig_name;
+               defined $sig_names;
 
-    _validate_signal_name($sig_name);
-    my $src_id = refaddr($src_obj);
+    $sig_names = [ $sig_names ]
+        unless ref($sig_names) eq 'ARRAY';
 
-    return exists $signal_map{$src_id}->{$sig_name};
+    for my $sig_name (@{$sig_names}) {
+        _validate_signal_name($sig_name);
+        my $src_id = refaddr($src_obj);
+        return 1 if exists $signal_map{$src_id}->{$sig_name};
+    }
+
+    return;
 }
 
 sub _connect_usage {
@@ -135,7 +146,7 @@ sub _connect_usage {
 
 sub connect {
     my $src_obj     = shift;
-    my $sig_name    = shift;
+    my $sig_names   = shift;
     my $dst_obj     = shift;
     my $dst_method;
 
@@ -152,16 +163,28 @@ sub connect {
     }
 
     my $options     = shift || { };
-
-    if ($options->{undef_ok}) {
-        _validate_signal_name($sig_name);
-    }
-    else {
-        _check_signal_exists(ref($src_obj), $sig_name)
-    }
-
     my $src_id      = refaddr($src_obj);
     my $caller      = ref($src_obj);
+
+    weaken($dst_obj) unless $options->{strong} || ref($dst_obj) eq 'CODE';
+
+    # Turn a single signal name into an anon array
+    $sig_names = [ $sig_names ]
+        unless ref($sig_names) eq 'ARRAY';
+
+    for my $sig_name (@{$sig_names}) {
+        if ($options->{undeclared}) {
+            _validate_signal_name($sig_name);
+        }
+        else {
+            _check_signal_exists(ref($src_obj), $sig_name)
+        }
+
+        # Stash the object and method so we can call it later.
+        push @{$signal_map{$src_id}->{$sig_name}}, [
+            $dst_obj, $dst_method, $options
+        ];
+    }
 
     # Now badness: we replace the DESTROY that Class::Std dropped into
     # the caller's namespace with our own. See the note under BUGS AND
@@ -191,12 +214,6 @@ sub connect {
         $patched{$caller}++;
     }
 
-    # Stash the object and method so we can call it later.
-    weaken($dst_obj) unless $options->{strong} || ref($dst_obj) eq 'CODE';
-    push @{$signal_map{$src_id}->{$sig_name}}, [
-        $dst_obj, $dst_method, $options
-    ];
-
     return;
 }
 
@@ -208,29 +225,34 @@ sub disconnect {
         unless blessed $src_obj;
 
     if (@_) {
-        my $sig_name = shift;
-        my $slots = $signal_map{$src_id}->{$sig_name};
+        my $sig_names   = shift;
+        my $dst_obj     = shift;    # optional
+        my $dst_method  = shift;    # optional - undef is ok in the grep below
+        my $dst_id      = refaddr($dst_obj);
+        
+        $sig_names = [ $sig_names ]
+            unless ref($sig_names) eq 'ARRAY';
 
-        if (@_) {
-            my $dst_obj     = shift;
-            my $dst_method  = shift;    # optional - undef is ok in the grep below
-            my $dst_id      = refaddr($dst_obj);
+        for my $sig_name (@{$sig_names}) {
+            my $slots = $signal_map{$src_id}->{$sig_name};
 
-            if (defined $slots) {
-                # Nasty block to filter out matching connections.
-                @{$slots} = grep {
-                    defined $_
-                      && defined $_->[0]
-                      && ($dst_id != refaddr($_->[0])
-                          || (! (defined($dst_method)
-                                   && defined($_->[1])
-                                   && ($dst_method eq $_->[1]))) )
-                } @{$slots};
+            if (defined($dst_obj)) {
+                if (defined $slots) {
+                    # Nasty block to filter out matching connections.
+                    @{$slots} = grep {
+                        defined $_
+                          && defined $_->[0]
+                          && ($dst_id != refaddr($_->[0])
+                              || (! (defined($dst_method)
+                                       && defined($_->[1])
+                                       && ($dst_method eq $_->[1]))) )
+                    } @{$slots};
+                }
             }
-        }
-        else {
-            # Delete all connections for given signal
-            delete $signal_map{$src_id}->{$sig_name};
+            else {
+                # Delete all connections for given signal
+                delete $signal_map{$src_id}->{$sig_name};
+            }
         }
     }
     else {
@@ -645,7 +667,7 @@ references to it need be kept.
 Anonymous subroutine slots are always strongly referred to - so there is no
 need to specify the C<strong> option for them.
 
-=item undef_ok
+=item undeclared
 
 Allow a connection to be made to an undefined signal. It is possible for an object
 to emit arbitrary signals by calling C<emit_signal>. Normally C<connect> checks that
@@ -699,7 +721,7 @@ like this:
 
     $self->emit_signal('made_up_signal', @sig_args);
 
-Pass C<connect> the C<undef_ok> option to connect to an undeclared signal.
+Pass C<connect> the C<undeclared> option to connect to an undeclared signal.
 
 =item C<has_slots($sig_name)>
 

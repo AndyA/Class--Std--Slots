@@ -223,7 +223,7 @@ for ($ob1a, $ob1b, $ob2, $ob2m) {
     $_->disconnect();
 }
 
-$ob1a->connect('made_up_signal_name', $ob1b, 'other_slot', { undef_ok => 1 });
+$ob1a->connect('made_up_signal_name', $ob1b, 'other_slot', { undeclared => 1 });
 $ob1a->emit_signal('made_up_signal_name');
 
 is(get_got, 'other_slot', 'Synthetic signal name');
