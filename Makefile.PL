@@ -3,6 +3,7 @@ use warnings;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
+    (MM->can('signature_target') ? (SIGN => 1) : ()),
     NAME                => 'Class::Std::Slots',
     AUTHOR              => 'Andy Armstrong <andy@hexten.net>',
     VERSION_FROM        => 'lib/Class/Std/Slots.pm',
