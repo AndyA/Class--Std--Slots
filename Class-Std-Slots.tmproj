@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>currentDocument</key>
-	<string>Build.PL</string>
+	<string>t/01.class.t</string>
 	<key>documents</key>
 	<array>
 		<dict>
@@ -21,34 +21,6 @@
 	<integer>200</integer>
 	<key>metaData</key>
 	<dict>
-		<key>Build.PL</key>
-		<dict>
-			<key>caret</key>
-			<dict>
-				<key>column</key>
-				<integer>29</integer>
-				<key>line</key>
-				<integer>6</integer>
-			</dict>
-			<key>firstVisibleColumn</key>
-			<integer>0</integer>
-			<key>firstVisibleLine</key>
-			<integer>0</integer>
-		</dict>
-		<key>Makefile.PL</key>
-		<dict>
-			<key>caret</key>
-			<dict>
-				<key>column</key>
-				<integer>0</integer>
-				<key>line</key>
-				<integer>6</integer>
-			</dict>
-			<key>firstVisibleColumn</key>
-			<integer>0</integer>
-			<key>firstVisibleLine</key>
-			<integer>0</integer>
-		</dict>
 		<key>lib/Class/Std/Slots.pm</key>
 		<dict>
 			<key>caret</key>
@@ -56,12 +28,28 @@
 				<key>column</key>
 				<integer>0</integer>
 				<key>line</key>
-				<integer>535</integer>
+				<integer>293</integer>
 			</dict>
+			<key>columnSelection</key>
+			<false/>
 			<key>firstVisibleColumn</key>
 			<integer>0</integer>
 			<key>firstVisibleLine</key>
-			<integer>862</integer>
+			<integer>262</integer>
+			<key>selectFrom</key>
+			<dict>
+				<key>column</key>
+				<integer>0</integer>
+				<key>line</key>
+				<integer>283</integer>
+			</dict>
+			<key>selectTo</key>
+			<dict>
+				<key>column</key>
+				<integer>0</integer>
+				<key>line</key>
+				<integer>293</integer>
+			</dict>
 		</dict>
 		<key>t.pl</key>
 		<dict>
@@ -91,7 +79,7 @@
 			<key>firstVisibleColumn</key>
 			<integer>0</integer>
 			<key>firstVisibleLine</key>
-			<integer>50</integer>
+			<integer>0</integer>
 			<key>selectFrom</key>
 			<dict>
 				<key>column</key>
@@ -111,14 +99,11 @@
 	<key>openDocuments</key>
 	<array>
 		<string>lib/Class/Std/Slots.pm</string>
-		<string>Makefile.PL</string>
-		<string>Build.PL</string>
-		<string>t.pl</string>
 		<string>t/01.class.t</string>
 	</array>
 	<key>showFileHierarchyDrawer</key>
 	<true/>
 	<key>windowFrame</key>
-	<string>{{29, 53}, {892, 770}}</string>
+	<string>{{17, 55}, {1019, 766}}</string>
 </dict>
 </plist>
