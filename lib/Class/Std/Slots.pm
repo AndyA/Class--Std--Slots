@@ -5,7 +5,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
 
-use version; our $VERSION = qv('0.0.3');
+use version; our $VERSION = qv('0.0.4');
 
 my %signal_map  = ( );  # maps id -> signame -> array of connected slots
 my %signal_busy = ( );  # maps id -> signame -> busy flag
@@ -311,7 +311,7 @@ Class::Std::Slots - Provide signals and slots for standard classes.
 
 =head1 VERSION
 
-This document describes Class::Std::Slots version 0.0.3
+This document describes Class::Std::Slots version 0.0.4
 
 =head1 SYNOPSIS
 

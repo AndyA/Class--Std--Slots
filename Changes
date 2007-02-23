@@ -9,3 +9,6 @@ Revision history for Class-Std-Slots
 0.0.3  Sat Aug 19 16:52:44 2006
        Added emit_signal and support for undeclared signals.
        Allow multiple signal names to be passed as an array ref.
+
+0.0.4   2007-02-23
+        Added machine readable license.
