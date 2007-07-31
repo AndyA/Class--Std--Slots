@@ -5,38 +5,38 @@ use strict;
 use Carp;
 use Scalar::Util qw(blessed refaddr weaken);
 
-use version; our $VERSION = qv('0.0.4');
+use version; our $VERSION = qv( '0.1' );
 
-my %signal_map  = ( );  # maps id -> signame -> array of connected slots
-my %signal_busy = ( );  # maps id -> signame -> busy flag
-my %patched     = ( );  # classes whose DESTROY we've patched
+my %signal_map  = ();    # maps id -> signame -> array of connected slots
+my %signal_busy = ();    # maps id -> signame -> busy flag
+my %patched     = ();    # classes whose DESTROY we've patched
 
 # Subs we export to caller's namespace
 my @exported_subs = qw(
-    connect
-    disconnect
-    signals
-    has_slots
-    emit_signal
+  connect
+  disconnect
+  signals
+  has_slots
+  emit_signal
 );
 
 sub _massage_signal_names {
     my $sig_names = shift;
 
     croak "Missing signal name"
-        unless defined($sig_names);
+      unless defined( $sig_names );
 
-    $sig_names = [ $sig_names ]
-        unless ref($sig_names);
-        
+    $sig_names = [$sig_names]
+      unless ref( $sig_names );
+
     croak "Signal name must be a scalar or an array reference"
-        unless ref($sig_names) eq 'ARRAY';
+      unless ref( $sig_names ) eq 'ARRAY';
 
-    for my $sig_name (@{$sig_names}) {
+    for my $sig_name ( @{$sig_names} ) {
         croak "Invalid signal name '$sig_name'"
-            unless $sig_name =~ /^\w(?:[\w\d])*$/;
+          unless $sig_name =~ /^\w(?:[\w\d])*$/;
     }
-    
+
     return $sig_names;
 }
 
@@ -44,36 +44,37 @@ sub _check_signals_exist {
     my $class     = shift;
     my $sig_names = shift;
 
-    for my $sig_name (@{$sig_names}) {
+    for my $sig_name ( @{$sig_names} ) {
+
         # OK to call UNIVERSAL::can() here because we do actually want to
         # know whether a method named after this signal exists rather than
         # whether this class or one of its superclasses can respond to
         # a particular message - so we're not interested in any overridden
         # version of can()
         croak "Signal '$sig_name' undefined"
-            unless UNIVERSAL::can($class, $sig_name);
+          unless UNIVERSAL::can( $class, $sig_name );
     }
 }
 
 sub emit_signal {
-    my $self        = shift;
-    my $sig_names   = _massage_signal_names(shift);
+    my $self      = shift;
+    my $sig_names = _massage_signal_names( shift );
 
-    for my $sig_name (@{$sig_names}) {
-        _emit_signal($self, $sig_name, @_);
+    for my $sig_name ( @{$sig_names} ) {
+        _emit_signal( $self, $sig_name, @_ );
     }
 }
 
 sub _emit_signal {
     my $self     = shift;
     my $sig_name = shift;
-    my $src_id   = refaddr($self);
+    my $src_id   = refaddr( $self );
 
-    unless (blessed($self)) {
+    unless ( blessed( $self ) ) {
         croak "Signal '$sig_name' must be invoked as a method\n";
     }
 
-    if (exists($signal_busy{$src_id}->{$sig_name})) {
+    if ( exists( $signal_busy{$src_id}->{$sig_name} ) ) {
         croak "Attempt to re-enter signal '$sig_name'";
     }
 
@@ -84,34 +85,36 @@ sub _emit_signal {
     # even if one of the slots dies - so wrap the whole
     # thing in an eval.
     eval {
+
         # Get the slots registered with this signal
         my $slots = $signal_map{$src_id}->{$sig_name};
 
         # Might have none... It's not an error.
-        if (defined $slots) {
-            for my $slot (@{$slots}) {
-                my ($dst_obj, $dst_method, $options) = @{$slot};
-                if (defined($dst_obj)) {
+        if ( defined $slots ) {
+            for my $slot ( @{$slots} ) {
+                my ( $dst_obj, $dst_method, $options ) = @{$slot};
+                if ( defined( $dst_obj ) ) {
 
                     my @args = @_;
 
                     # The reveal_source option causes a hashref
                     # describing the source of the signal to
                     # be prepended to the args.
-                    if ($options->{reveal_source}) {
-                        unshift @args, {
+                    if ( $options->{reveal_source} ) {
+                        unshift @args,
+                          {
                             source  => $self,
                             signal  => $sig_name,
                             options => $options
-                        };
+                          };
                     }
 
                     # Call an anon sub or a method
-                    if (blessed($dst_obj)) {
-                        $dst_obj->$dst_method(@args);
+                    if ( blessed( $dst_obj ) ) {
+                        $dst_obj->$dst_method( @args );
                     }
                     else {
-                        $dst_obj->(@args);
+                        $dst_obj->( @args );
                     }
                 }
             }
@@ -132,14 +135,14 @@ sub _destroy {
 }
 
 sub has_slots {
-    my $src_obj     = shift;
-    my $sig_names   = _massage_signal_names(shift);
+    my $src_obj   = shift;
+    my $sig_names = _massage_signal_names( shift );
 
     croak 'Usage: $obj->has_slots($sig_name)'
-        unless blessed $src_obj;
+      unless blessed $src_obj;
 
-    for my $sig_name (@{$sig_names}) {
-        my $src_id = refaddr($src_obj);
+    for my $sig_name ( @{$sig_names} ) {
+        my $src_id = refaddr( $src_obj );
         return 1 if exists $signal_map{$src_id}->{$sig_name};
     }
 
@@ -147,67 +150,69 @@ sub has_slots {
 }
 
 sub _connect_usage {
-    croak 'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])';
+    croak
+      'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])';
 }
 
 sub connect {
-    my $src_obj     = shift;
-    my $sig_names   = _massage_signal_names(shift);
-    my $dst_obj     = shift;
+    my $src_obj   = shift;
+    my $sig_names = _massage_signal_names( shift );
+    my $dst_obj   = shift;
     my $dst_method;
 
-    _connect_usage() unless blessed($src_obj) &&
-                            defined($dst_obj);
+    _connect_usage()
+      unless blessed( $src_obj )
+      && defined( $dst_obj );
 
-    if (blessed($dst_obj)) {
+    if ( blessed( $dst_obj ) ) {
         $dst_method = shift || _connect_usage();
-        croak "Slot '$dst_method' not handled by " . ref($dst_obj)
-            unless $dst_obj->can($dst_method);
+        croak "Slot '$dst_method' not handled by " . ref( $dst_obj )
+          unless $dst_obj->can( $dst_method );
     }
     else {
-        _connect_usage() unless ref($dst_obj) eq 'CODE';
+        _connect_usage() unless ref( $dst_obj ) eq 'CODE';
     }
 
-    my $options     = shift || { };
-    my $src_id      = refaddr($src_obj);
-    my $caller      = ref($src_obj);
+    my $options = shift || {};
+    my $src_id  = refaddr( $src_obj );
+    my $caller  = ref( $src_obj );
 
-    weaken($dst_obj) 
-        unless $options->{strong} 
-                || ref($dst_obj) eq 'CODE';
+    _check_signals_exist( $caller, $sig_names )
+      unless $options->{undeclared};
 
-    _check_signals_exist($caller, $sig_names)
-        unless $options->{undeclared};
+    my $weaken = !( $options->{strong} || ref( $dst_obj ) eq 'CODE' );
+    for my $sig_name ( @{$sig_names} ) {
 
-    for my $sig_name (@{$sig_names}) {
         # Stash the object and method so we can call it later.
-        push @{$signal_map{$src_id}->{$sig_name}}, [
-            $dst_obj, $dst_method, $options
-        ];
+        my $dst_data = [ $dst_obj, $dst_method, $options ];
+        weaken( $dst_data->[0] ) if $weaken;
+        push @{ $signal_map{$src_id}->{$sig_name} }, $dst_data;
     }
 
     # Now badness: we replace the DESTROY that Class::Std dropped into
     # the caller's namespace with our own. See the note under BUGS AND
     # LIMITATIONS about this technique for replacing Class::Std's
     # destructor.
-    unless (exists $patched{$caller}) {
+    unless ( exists $patched{$caller} ) {
+
         # If there's nothing in the hash for this object we can't have
         # installed our destructor yet - so do it now.
 
         no strict 'refs';
 
-        my $destroy_func    = $caller . '::DESTROY';
-        my $current_func    = *{ $destroy_func }{ CODE };
+        my $destroy_func = $caller . '::DESTROY';
+        my $current_func = *{$destroy_func}{CODE};
 
-        local $^W = 0;  # Disable subroutine redefined warning
-        no warnings;    # Need this too.
+        local $^W = 0;    # Disable subroutine redefined warning
+        no warnings;      # Need this too.
 
-        *{ $destroy_func } = sub {
+        *{$destroy_func} = sub {
+
             # Destroy our members
-            _destroy($src_id);
+            _destroy( $src_id );
 
             # Chain the existing destructor
-            $current_func->(@_);
+            $current_func->( @_ );
         };
 
         # Remember we've patched this one...
@@ -219,63 +224,73 @@ sub connect {
 
 sub disconnect {
     my $src_obj = shift;
-    my $src_id  = refaddr($src_obj);
+    my $src_id  = refaddr( $src_obj );
 
     croak 'disconnect must be called as a member'
-        unless blessed $src_obj;
+      unless blessed $src_obj;
 
-    if (@_) {
-        my $sig_names   = _massage_signal_names(shift);
-        my $dst_obj     = shift;    # optional
-        my $dst_method  = shift;    # optional - undef is ok in the grep below
-        my $dst_id      = refaddr($dst_obj);
+    if ( @_ ) {
+        my $sig_names = _massage_signal_names( shift );
+        my $dst_obj   = shift;                            # optional
+        my $dst_method = shift;    # optional - undef is ok in the grep below
+        my $dst_id = refaddr( $dst_obj );
 
-        for my $sig_name (@{$sig_names}) {
+        for my $sig_name ( @{$sig_names} ) {
             my $slots = $signal_map{$src_id}->{$sig_name};
 
-            if (defined($dst_obj)) {
-                if (defined $slots) {
+            if ( defined( $dst_obj ) ) {
+                if ( defined $slots ) {
+
                     # Nasty block to filter out matching connections.
                     @{$slots} = grep {
-                        defined $_
+                             defined $_
                           && defined $_->[0]
-                          && ($dst_id != refaddr($_->[0])
-                              || (! (defined($dst_method)
-                                       && defined($_->[1])
-                                       && ($dst_method eq $_->[1]))) )
+                          && (
+                            $dst_id != refaddr( $_->[0] )
+                            || (
+                                (
+                                       defined( $dst_method )
+                                    && defined( $_->[1] )
+                                    && ( $dst_method ne $_->[1] )
+                                )
+                            )
+                          )
                     } @{$slots};
                 }
             }
             else {
+
                 # Delete all connections for given signal
                 delete $signal_map{$src_id}->{$sig_name};
             }
         }
     }
     else {
+
         # Delete /all/ connections for this object
         delete $signal_map{$src_id};
     }
 }
 
 sub signals {
-    my $caller = caller;
-    my $sig_names = _massage_signal_names(\@_);
+    my $caller    = caller;
+    my $sig_names = _massage_signal_names( \@_ );
 
-    for my $sig_name (@{$sig_names}) {
+    for my $sig_name ( @{$sig_names} ) {
         croak "Signal '$sig_name' already declared"
-            if UNIVERSAL::can($caller, $sig_name);
+          if UNIVERSAL::can( $caller, $sig_name );
 
         my $sig_func = $caller . '::' . $sig_name;
 
         # Create the subroutine stub
         no strict 'refs';
-        *{ $sig_func } = sub {
+        *{$sig_func} = sub {
             my $self = shift;
-            _emit_signal($self, $sig_name, @_);
+            _emit_signal( $self, $sig_name, @_ );
+
             # Make sure we don't ever have a return value
             return;
-        }
+          }
     }
 
     return;
@@ -287,7 +302,7 @@ sub import {
     # Install our exported subs
     no strict 'refs';
     for my $sub ( @exported_subs ) {
-        *{ $caller . '::' . $sub } = \&{ $sub };
+        *{ $caller . '::' . $sub } = \&{$sub};
     }
 }
 
@@ -295,14 +310,14 @@ sub DESTROY {
     my $self = shift;
 
     # Tidy up for us
-    my $src_id = refaddr($self);
-    _destroy($src_id);
+    my $src_id = refaddr( $self );
+    _destroy( $src_id );
 
     # and for them.
     $self->SUPER::DESTROY();
 }
 
-1; # Magic true value required at end of module
+1;    # Magic true value required at end of module
 __END__
 
 =head1 NAME
@@ -311,7 +326,7 @@ Class::Std::Slots - Provide signals and slots for standard classes.
 
 =head1 VERSION
 
-This document describes Class::Std::Slots version 0.0.4
+This document describes Class::Std::Slots version 0.1
 
 =head1 SYNOPSIS
 
