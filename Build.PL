@@ -10,6 +10,7 @@ my $builder = Module::Build->new(
     dist_version_from   => 'lib/Class/Std/Slots.pm',
     requires => {
         'Test::More' => 0,
+        'Class::Std' => 0, 
         'version'    => 0,
     },
     add_to_cleanup      => [ 'Class-Std-Slots-*' ],
