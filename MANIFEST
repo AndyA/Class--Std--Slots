@@ -9,3 +9,4 @@ t/01.class.t
 t/pod-coverage.t
 t/pod.t
 TODO
+META.yml
