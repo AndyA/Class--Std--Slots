@@ -15,3 +15,6 @@ Revision history for Class-Std-Slots
 
 0.2     2007-11-07
         Remove version.pm dependency.
+
+0.3     2008-03-07
+        Declared dependency on Class::Std.
