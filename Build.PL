@@ -1,8 +1,12 @@
 use strict;
 use warnings;
-use Module::Build;
 
-my $builder = Module::Build->new(
+use lib 'inc';
+
+use Module::Build;
+use MyBuilder;
+
+my $builder = MyBuilder->new(
   module_name       => 'Class::Std::Slots',
   sign              => 1,
   license           => 'perl',
