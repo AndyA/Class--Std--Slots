@@ -1,6 +1,7 @@
 ---
 name: Class-Std-Slots
-version: 0.31
+version: 0.32
+
 author:
   - 'Andy Armstrong <andy@hexten.net>'
 abstract: Provide signals and slots for standard classes.
