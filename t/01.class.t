@@ -138,49 +138,49 @@ is( get_got, 'more_slot', 'Chained call' );
 # Test some errors
 eval { $ob1a->connect( 'my_signal', $ob2m, 'bogus_slot' ); };
 
-is(
+like(
   get_err,
-  "Slot 'bogus_slot' not handled by My::Class::Two::More",
+  qr/^Slot 'bogus_slot' not handled by My::Class::Two::More/,
   'Bad slot name'
 );
 
 eval { $ob1a->connect( 'my_signal', my $not_an_obj, 'some_slot' ); };
 
-is(
+like(
   get_err,
-  'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])',
+  qr/^Usage: \$source->connect\(\$sig_name, \$dst_obj, \$dst_method \[, \{ options }]\)/,
   'Bad object'
 );
 
 eval { $ob1a->connect( 'my_signal', $ob2 ); };
 
-is(
+like(
   get_err,
-  'Usage: $source->connect($sig_name, $dst_obj, $dst_method [, { options }])',
+  qr/^Usage: \$source->connect\(\$sig_name, \$dst_obj, \$dst_method \[, \{ options }]\)/,
   'Missing method'
 );
 
 eval { $ob1a->connect( 'bad signal name', $ob2m, 'more_slot' ); };
 
-is(
+like(
   get_err,
-  "Invalid signal name 'bad signal name'",
+  qr/^Invalid signal name 'bad signal name'/,
   'Bad signal name'
 );
 
 eval { $ob2->connect( 'unique_to_more', $ob1a, 'my_slot' ); };
 
-is(
+like(
   get_err,
-  "Signal 'unique_to_more' undefined",
+  qr/^Signal 'unique_to_more' undefined/,
   'Signal only in subclass'
 );
 
 eval { $ob1a->connect( 'my_signal', $ob2, 'more_slot' ); };
 
-is(
+like(
   get_err,
-  "Slot 'more_slot' not handled by My::Class::Two",
+  qr/^Slot 'more_slot' not handled by My::Class::Two/,
   'Slot only in subclass'
 );
 
@@ -193,9 +193,9 @@ $ob2m->connect( 'unique_to_more', $ob2m, 'more_slot' );
 
 eval { $ob2m->unique_to_more; };
 
-is(
+like(
   get_err,
-  "Attempt to re-enter signal 'unique_to_more'",
+  qr/^Attempt to re-enter signal 'unique_to_more'/,
   'Simple circularity'
 );
 is( get_got, 'more_slot', 'Simple circularity results' );
@@ -224,9 +224,9 @@ $ob2m->connect( 'unique_to_more', $ob1a, 'my_signal' );
 
 eval { $ob1a->my_signal; };
 
-is(
+like(
   get_err,
-  "Attempt to re-enter signal 'my_signal'",
+  qr/^Attempt to re-enter signal 'my_signal'/,
   'Complex circularity'
 );
 is(
